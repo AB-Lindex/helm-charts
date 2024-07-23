@@ -1,0 +1,136 @@
+# Schedule for the cron job in cron syntax
+schedule: "0 5 * * *"
+
+s3:
+  # AWS CLI image for uploading backups to S3
+  awsCliImage: "amazon/aws-cli:2.17.3"
+
+  # S3 endpoint URL
+  s3EndpointUrl: "http://minio.minio.svc.cluster.local:9000"
+
+  # Enable S3 backup
+  enabled: false
+
+  # S3 bucket name
+  bucketName: "etcd"
+
+  # Use an existing secret for S3 credentials
+  existingSecret: false
+
+  # Create a new secret for S3 credentials
+  createSecret: true
+
+  # Use SealedSecret for S3 credentials
+  sealedSecret: false
+
+  # Name of the secret to be used/created for S3 credentials
+  secretName: s3-secret
+
+  # S3 access key (base64 encoded if not using SealedSecret)
+  # To base64 encode your access key, run: echo -n 'your-access-key' | base64
+  # If using SealedSecret, generate the encrypted key as follows:
+  # echo -n 'your-access-key' | kubeseal --raw --from-file=/dev/stdin --namespace your-namespace --name s3-secret --scope cluster-wide
+  accessKey: ""
+
+  # S3 secret key (base64 encoded if not using SealedSecret)
+  # To base64 encode your secret key, run: echo -n 'your-secret-key' | base64
+  # If using SealedSecret, generate the encrypted key as follows:
+  # echo -n 'your-secret-key' | kubeseal --raw --from-file=/dev/stdin --namespace your-namespace --name s3-secret --scope cluster-wide
+  secretKey: ""
+
+  # Enable rotation of backups in S3
+  rotateInS3: false
+
+  # Number of backups to keep in S3
+  keepInS3Count: 45
+
+backup:
+  # Image for etcd backup
+  etcdBackupImage: "quay.io/coreos/etcd:v3.5.6"
+
+  # Name of the PersistentVolumeClaim
+  claimName: "etcd-backup-pvc"
+
+  # Enable rotation of backups on disk
+  rotateOnDisk: false
+
+  # Number of backups to keep on disk
+  keepOnDiskCount: 30
+
+  pvc:
+    # Use PersistentVolumeClaim for backup storage
+    enabled: false
+    # Storage class for the PersistentVolumeClaim
+    storageClassName: "standard"
+
+    # Access modes for the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
+
+    # Resources requests for the PersistentVolumeClaim
+    resources:
+      requests:
+        storage: 10Gi
+
+  customPV:
+    # Use custom PersistentVolume for backup storage
+    enabled: false
+
+    # Name of the custom PersistentVolume
+    name: "etcd-custom-pv"
+
+    # Storage class for the custom PersistentVolume
+    storageClassName: "etcd-sc"
+
+    # Reclaim policy for the custom PersistentVolume
+    reclaimPolicy: "Retain"
+
+    # CSI driver for the custom PersistentVolume
+    driver: ""
+
+    # Use SealedSecret for custom PV credentials
+    useSealedSecret: false
+
+    # Name of the secret for custom PV credentials
+    secretName: "etcd-pv-secret"
+
+    # Username for the custom PV (base64 encoded if not using SealedSecret)
+    # To base64 encode your username, run: echo -n 'your-username' | base64
+    # If using SealedSecret, generate the encrypted username as follows:
+    # echo -n 'your-username' | kubeseal --raw --from-file=/dev/stdin --namespace your-namespace --name etcd-pv-secret --scope cluster-wide
+    username: ""
+
+    # Password for the custom PV (base64 encoded if not using SealedSecret)
+    # To base64 encode your password, run: echo -n 'your-password' | base64
+    # If using SealedSecret, generate the encrypted password as follows:
+    # echo -n 'your-password' | kubeseal --raw --from-file=/dev/stdin --namespace your-namespace --name etcd-pv-secret --scope cluster-wide
+    password: ""
+
+    # Access modes for the custom PersistentVolume
+    accessModes:
+      - ReadWriteOnce
+
+    # Resources requests for the custom PersistentVolume
+    resources:
+      requests:
+        storage: 10Gi
+
+    # Mount options for the custom PersistentVolume
+    mountOptions: {}
+      # - dir_mode=0777
+      # - file_mode=0777
+
+    # Additional options for the custom PersistentVolume
+    options: {}
+    # - source: "//smbserver/share"
+
+  hostPath:
+    # Use hostPath for backup storage
+    enabled: false
+    # Path on the host for backup storage
+    path: "/var/lib/etcd-backup"
+  
+# Host paths for etcd certificates
+hostPaths:
+  etcdCerts: "/run/config/pki/etcd"
+

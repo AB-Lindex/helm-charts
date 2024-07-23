@@ -1,0 +1,69 @@
+{{- if .Values.backup.customPV.enabled }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ .Values.backup.customPV.name }}
+  labels:
+    app.kubernetes.io/name: {{ include "etcd-backup.name" . }}
+    helm.sh/chart: {{ include "etcd-backup.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  capacity:
+    storage: {{ .Values.backup.customPV.resources.requests.storage }}
+  persistentVolumeReclaimPolicy: {{ .Values.backup.customPV.reclaimPolicy }}
+  storageClassName: {{ .Values.backup.customPV.storageClassName }}
+  mountOptions:
+  {{- range .Values.backup.customPV.mountOptions }}
+    - {{ . }}
+  {{- end }}
+  accessModes:
+  {{- range .Values.backup.customPV.accessModes }}
+    - {{ . }}
+  {{- end }}
+  csi:
+    driver: {{ .Values.backup.customPV.driver }}
+    volumeHandle: {{ .Values.backup.customPV.name }}
+    readOnly: false
+    nodeStageSecretRef:
+      name: {{ .Values.backup.customPV.secretName }}
+      namespace: {{ .Release.Namespace }}
+    volumeAttributes:
+{{ toYaml .Values.backup.customPV.options | indent 6 }}
+{{- end }}
+---
+{{- if or .Values.backup.pvc.enabled .Values.backup.customPV.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.backup.claimName }}
+  labels:
+    app.kubernetes.io/name: {{ include "etcd-backup.name" . }}
+    helm.sh/chart: {{ include "etcd-backup.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  accessModes:
+  {{- if .Values.backup.pvc.enabled }}
+  {{- range .Values.backup.pvc.accessModes }}
+    - {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.pvc.resources.requests.storage }}
+  {{- if .Values.backup.pvc.storageClassName }}
+  storageClassName: {{ .Values.backup.pvc.storageClassName }}
+  {{- end }}
+  {{- else if .Values.backup.customPV.enabled }}
+  {{- range .Values.backup.customPV.accessModes }}
+    - {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.customPV.resources.requests.storage }}
+  {{- if .Values.backup.customPV.storageClassName }}
+  storageClassName: {{ .Values.backup.customPV.storageClassName }}
+  {{- end }}
+  volumeName: {{ .Values.backup.customPV.name }}
+  {{- end }}
+{{- end }}

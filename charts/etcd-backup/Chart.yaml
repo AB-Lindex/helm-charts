@@ -1,0 +1,10 @@
+apiVersion: v2
+name: etcd-backup
+description: A Helm chart for etcd backup CronJob
+
+type: application
+
+version: 0.1.0
+appVersion: "1.0"
+
+home: https://github.com/AB-Lindex/helm-charts

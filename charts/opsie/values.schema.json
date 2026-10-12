@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "definitions": {
+    "replicaCount": {
+      "oneOf": [
+        { "type": "string", "maxLength": 0 },
+        { "type": "integer", "minimum": 0 },
+        { "type": "null" }
+      ]
+    },
+    "part": {
+      "type": "object",
+      "properties": {
+        "replicaCount": { "$ref": "#/definitions/replicaCount" },
+        "resources": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "affinity": { "type": "object" },
+        "topologySpreadConstraints": { "type": "array" },
+        "annotations": { "type": "object" },
+        "podLabels": { "type": "object" },
+        "podAnnotations": { "type": "object" },
+        "extraEnv": { "type": "array" }
+      }
+    }
+  },
+  "properties": {
+    "fullnameOverride": { "type": "string" },
+    "nameOverride": { "type": "string" },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": ["string", "number"] },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+        "pullSecrets": { "type": "array" }
+      }
+    },
+    "topology": {
+      "type": "string",
+      "enum": ["all-in-one", "split-ingest", "split-all"]
+    },
+    "topologySpread": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "constraints": { "type": "array" }
+      }
+    },
+    "parts": {
+      "type": "object",
+      "properties": {
+        "all": { "$ref": "#/definitions/part" },
+        "ingest": { "$ref": "#/definitions/part" },
+        "processor": { "$ref": "#/definitions/part" },
+        "app": { "$ref": "#/definitions/part" }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "properties": {
+        "enabled": { "enum": ["auto", true, false] }
+      }
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["mssql", "postgres"] },
+        "existingSecret": { "type": "string" },
+        "existingSecretKey": { "type": "string" },
+        "migrate": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "mode": { "type": "string", "enum": ["hook", "initContainer", "none"] },
+            "dryRun": { "type": "boolean" },
+            "backoffLimit": { "type": "integer", "minimum": 0 },
+            "activeDeadlineSeconds": { "type": "integer", "minimum": 1 },
+            "initContainerParts": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "valkey": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "redis": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "addr": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "existingSecretKey": { "type": "string" }
+      }
+    },
+    "tls": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["none", "proxy", "native"] },
+        "existingSecret": { "type": "string" },
+        "mountPath": { "type": "string" },
+        "httpsRedirect": { "type": "boolean" },
+        "hstsMaxAge": { "type": ["string", "integer"] }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "serviceMonitor": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "ingresses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "httpRoutes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "parentRefs"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "parentRefs": { "type": "array", "minItems": 1 }
+        }
+      }
+    },
+    "extraObjects": { "type": "array" }
+  }
+}

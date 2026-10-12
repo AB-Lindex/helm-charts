@@ -1,0 +1,153 @@
+suite: tls
+templates:
+  - templates/deployment.yaml
+values:
+  - ../ci/split-all-values.yaml
+tests:
+  - it: none sets no TLS variables, no https port and no volume
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "TRUST_FORWARDED_HEADERS")]
+        documentIndex: 2
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "TLS_CERT_FILE")]
+        documentIndex: 2
+      - lengthEqual:
+          path: spec.template.spec.containers[0].ports
+          count: 1
+        documentIndex: 2
+      - notExists:
+          path: spec.template.spec.volumes
+        documentIndex: 2
+
+  - it: proxy trusts forwarded headers on traffic parts only
+    set:
+      tls.mode: proxy
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TRUST_FORWARDED_HEADERS
+            value: "true"
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TRUST_FORWARDED_HEADERS
+            value: "true"
+        documentIndex: 2
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "TRUST_FORWARDED_HEADERS")]
+        documentIndex: 1
+      - lengthEqual:
+          path: spec.template.spec.containers[0].ports
+          count: 1
+        documentIndex: 2
+
+  - it: native mounts the Secret and sets the TLS variables on ingest and app
+    set:
+      tls.mode: native
+      tls.existingSecret: opsie-tls
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TLS_CERT_FILE
+            value: /app/tls/tls.crt
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TLS_KEY_FILE
+            value: /app/tls/tls.key
+        documentIndex: 2
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TLS_PORT
+            value: "8443"
+        documentIndex: 2
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: https
+            containerPort: 8443
+            protocol: TCP
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tls
+            mountPath: /app/tls
+            readOnly: true
+        documentIndex: 2
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tls
+            secret:
+              secretName: opsie-tls
+        documentIndex: 2
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.port
+          value: http
+        documentIndex: 2
+
+  - it: native gives the processor no TLS settings
+    set:
+      tls.mode: native
+      tls.existingSecret: opsie-tls
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "TLS_CERT_FILE")]
+        documentIndex: 1
+      - notExists:
+          path: spec.template.spec.volumes
+        documentIndex: 1
+      - lengthEqual:
+          path: spec.template.spec.containers[0].ports
+          count: 1
+        documentIndex: 1
+
+  - it: httpsRedirect and hstsMaxAge render under native
+    set:
+      tls.mode: native
+      tls.existingSecret: opsie-tls
+      tls.httpsRedirect: true
+      tls.hstsMaxAge: 720h
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: HTTPS_REDIRECT
+            value: "true"
+        documentIndex: 2
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: HSTS_MAX_AGE
+            value: 720h
+        documentIndex: 2
+
+  - it: hstsMaxAge 0 and empty render nothing
+    set:
+      tls.mode: native
+      tls.existingSecret: opsie-tls
+      tls.hstsMaxAge: "0"
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "HSTS_MAX_AGE")]
+        documentIndex: 2
+
+  - it: tls.mountPath moves the mount and the file paths
+    set:
+      tls.mode: native
+      tls.existingSecret: opsie-tls
+      tls.mountPath: /certs
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TLS_CERT_FILE
+            value: /certs/tls.crt
+        documentIndex: 2

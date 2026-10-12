@@ -1,0 +1,122 @@
+suite: httproute
+templates:
+  - templates/httproute.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: renders nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: all-in-one renders one rule to the all Service
+    set:
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+          hostnames:
+            - opsie.example
+    asserts:
+      - equal:
+          path: metadata.name
+          value: opsie-users
+      - equal:
+          path: spec.parentRefs
+          value:
+            - name: gw
+      - equal:
+          path: spec.hostnames
+          value:
+            - opsie.example
+      - equal:
+          path: spec.rules
+          value:
+            - matches:
+                - path:
+                    type: PathPrefix
+                    value: /
+              backendRefs:
+                - name: opsie
+                  port: 80
+
+  - it: two entries with different parentRefs render two routes
+    set:
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: public
+        - name: senders
+          parentRefs:
+            - name: internal
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: spec.parentRefs[0].name
+          value: public
+        documentIndex: 0
+      - equal:
+          path: spec.parentRefs[0].name
+          value: internal
+        documentIndex: 1
+
+  - it: split topologies generate the events rule and the catch-all rule
+    set:
+      topology: split-all
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+    asserts:
+      - equal:
+          path: spec.rules
+          value:
+            - matches:
+                - path:
+                    type: PathPrefix
+                    value: /api/events
+              backendRefs:
+                - name: opsie-ingest
+                  port: 80
+            - matches:
+                - path:
+                    type: PathPrefix
+                    value: /
+              backendRefs:
+                - name: opsie-app
+                  port: 80
+
+  - it: filters and matchHeaders land on every rule
+    set:
+      topology: split-ingest
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+          filters:
+            - type: RequestHeaderModifier
+              requestHeaderModifier:
+                add:
+                  - name: X-A
+                    value: b
+          matchHeaders:
+            - name: X-Env
+              value: prod
+    asserts:
+      - equal:
+          path: spec.rules[0].filters[0].type
+          value: RequestHeaderModifier
+      - equal:
+          path: spec.rules[1].filters[0].type
+          value: RequestHeaderModifier
+      - equal:
+          path: spec.rules[0].matches[0].headers
+          value:
+            - name: X-Env
+              value: prod
+      - equal:
+          path: spec.rules[1].matches[0].headers
+          value:
+            - name: X-Env
+              value: prod

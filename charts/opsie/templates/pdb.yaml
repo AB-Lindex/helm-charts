@@ -1,0 +1,24 @@
+{{- $root := . }}
+{{- $pdb := $root.Values.podDisruptionBudget }}
+{{- range $part := (include "opsie.parts" . | fromJsonArray) }}
+{{- $enabled := or (eq (toString $pdb.enabled) "true") (and (eq (toString $pdb.enabled) "auto") (ge (int (include "opsie.replicas" (dict "root" $root "part" $part))) 2)) }}
+{{- if $enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "opsie.partFullname" (dict "root" $root "part" $part) }}
+  labels:
+    {{- include "opsie.partLabels" (dict "root" $root "part" $part) | nindent 4 }}
+spec:
+  {{- if not (kindIs "invalid" $pdb.minAvailable) }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- end }}
+  {{- if not (kindIs "invalid" $pdb.maxUnavailable) }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "opsie.selectorLabels" (dict "root" $root "part" $part) | nindent 6 }}
+{{- end }}
+{{- end }}

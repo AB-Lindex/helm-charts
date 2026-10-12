@@ -1,0 +1,77 @@
+suite: pdb
+templates:
+  - templates/pdb.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: renders nothing at one replica with auto
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: all gets a budget as soon as it has two replicas
+    set:
+      parts.all.replicaCount: 2
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+      - notExists:
+          path: spec.minAvailable
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/component"]
+          value: all
+
+  - it: split-all renders a budget per part with the default replicas
+    set:
+      topology: split-all
+    asserts:
+      - hasDocuments:
+          count: 3
+
+  - it: split-all budgets follow each part's replica count
+    set:
+      topology: split-all
+      parts.app.replicaCount: 1
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: true forces a budget at one replica
+    set:
+      podDisruptionBudget.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: false renders none at three replicas
+    set:
+      podDisruptionBudget.enabled: false
+      parts.all.replicaCount: 3
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: minAvailable renders when maxUnavailable is nulled
+    values:
+      - ../ci/all-in-one-values.yaml
+      - values/pdb-min-available.yaml
+    set:
+      parts.all.replicaCount: 2
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 1
+      - notExists:
+          path: spec.maxUnavailable
+
+  - it: percentages pass through unchanged
+    set:
+      parts.all.replicaCount: 2
+      podDisruptionBudget.maxUnavailable: 50%
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 50%

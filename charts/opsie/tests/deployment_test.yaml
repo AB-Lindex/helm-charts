@@ -1,0 +1,454 @@
+suite: deployment
+templates:
+  - templates/deployment.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: all-in-one renders one Deployment without module variables
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: opsie
+      - equal:
+          path: spec.replicas
+          value: 1
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MODULES
+            value: ingestion
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "NOT_MODULES")]
+
+  - it: split-ingest renders ingest and app with their modules
+    set:
+      topology: split-ingest
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: opsie-ingest
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MODULES
+            value: ingestion
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NOT_MODULES
+            value: ingestion
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - equal:
+          path: spec.replicas
+          value: 1
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+
+  - it: split-all renders ingest, processor and app with default replicas 2
+    set:
+      topology: split-all
+    asserts:
+      - hasDocuments:
+          count: 3
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MODULES
+            value: alert-processing
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NOT_MODULES
+            value: ingestion,alert-processing
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - equal:
+          path: spec.replicas
+          value: 2
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - equal:
+          path: spec.replicas
+          value: 2
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor
+      - equal:
+          path: spec.replicas
+          value: 2
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+
+  - it: replicaCount of a part overrides the topology default
+    set:
+      topology: split-all
+      parts.app.replicaCount: 5
+      parts.processor.replicaCount: 0
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 5
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - equal:
+          path: spec.replicas
+          value: 0
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor
+
+  - it: replicaCount of all overrides the default
+    set:
+      parts.all.replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: uses a one-at-a-time rolling update with the component label in selector and pod labels
+    set:
+      topology: split-all
+    asserts:
+      - equal:
+          path: spec.strategy
+          value:
+            type: RollingUpdate
+            rollingUpdate:
+              maxSurge: 1
+              maxUnavailable: 0
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/component"]
+          value: ingest
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: ingest
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: processor
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor
+
+  - it: strategy values are configurable
+    set:
+      strategy.rollingUpdate.maxSurge: 2
+      strategy.rollingUpdate.maxUnavailable: 1
+    asserts:
+      - equal:
+          path: spec.strategy.rollingUpdate
+          value:
+            maxSurge: 2
+            maxUnavailable: 1
+
+  - it: runs as uid 1001 without privilege escalation and with probes on the http port
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 1001
+      - equal:
+          path: spec.template.spec.securityContext.runAsGroup
+          value: 1001
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value:
+            - ALL
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+          value:
+            path: /healthz
+            port: http
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value:
+            path: /readyz
+            port: http
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: example.invalid/opsie:v0.0.0-test
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: opsie
+
+  - it: falls back to the appVersion when image.tag is empty
+    set:
+      image.tag: ""
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: example.invalid/opsie:v0
+
+  - it: checksum annotation changes with the ConfigMap content
+    set:
+      alerts.reopenWindow: 10m
+    asserts:
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/config"]
+          pattern: "^[0-9a-f]{64}$"
+
+  - it: topology spread on agentpool selects only the part's own pods
+    set:
+      topology: split-all
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints
+          value:
+            - maxSkew: 1
+              topologyKey: agentpool
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: opsie
+                  app.kubernetes.io/instance: RELEASE-NAME
+                  app.kubernetes.io/component: ingest
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/component"]
+          value: app
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+
+  - it: a part's own spread constraints replace the shared list and keep a given labelSelector
+    set:
+      topology: split-all
+      parts.app.topologySpreadConstraints:
+        - maxSkew: 2
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              custom: label
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints
+          value:
+            - maxSkew: 2
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  custom: label
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: agentpool
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+
+  - it: topologySpread.enabled=false renders no constraints
+    set:
+      topologySpread.enabled: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+
+  - it: per-part scheduling, annotations, labels and env are applied
+    set:
+      topology: split-all
+      podLabels:
+        global: label
+      podAnnotations:
+        global: annotation
+      extraEnv:
+        - name: GLOBAL
+          value: g
+      extraEnvFrom:
+        - secretRef:
+            name: extra
+      parts.ingest.nodeSelector:
+        pool: ingest
+      parts.ingest.tolerations:
+        - key: k
+          operator: Exists
+      parts.ingest.affinity:
+        nodeAffinity: {}
+      parts.ingest.annotations:
+        argocd.argoproj.io/sync-wave: "1"
+      parts.ingest.podLabels:
+        azure.workload.identity/use: "true"
+      parts.ingest.podAnnotations:
+        part: annotation
+      parts.ingest.extraEnv:
+        - name: PART
+          value: p
+      parts.ingest.resources:
+        limits:
+          cpu: "1"
+    documentSelector:
+      path: metadata.name
+      value: opsie-ingest
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value:
+            pool: ingest
+      - equal:
+          path: spec.template.spec.tolerations[0].key
+          value: k
+      - exists:
+          path: spec.template.spec.affinity.nodeAffinity
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "1"
+      - equal:
+          path: spec.template.metadata.labels["azure.workload.identity/use"]
+          value: "true"
+      - equal:
+          path: spec.template.metadata.labels.global
+          value: label
+      - equal:
+          path: spec.template.metadata.annotations.part
+          value: annotation
+      - equal:
+          path: spec.template.metadata.annotations.global
+          value: annotation
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: "1"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GLOBAL
+            value: g
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PART
+            value: p
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[1].secretRef.name
+          value: extra
+      - equal:
+          path: spec.template.spec.containers[0].env[3].name
+          value: GLOBAL
+      - equal:
+          path: spec.template.spec.containers[0].env[4].name
+          value: PART
+
+  - it: global resources apply to parts without their own
+    set:
+      resources:
+        requests:
+          cpu: 100m
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 100m
+
+  - it: imagePullSecrets are rendered
+    set:
+      image.pullSecrets:
+        - name: regcred
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: regcred
+
+  - it: fullnameOverride empty falls back to release and chart name
+    set:
+      fullnameOverride: ""
+      topology: split-ingest
+    asserts:
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-opsie-ingest
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-opsie-ingest
+
+  - it: fullnameOverride prefixes every part
+    set:
+      fullnameOverride: other
+      topology: split-ingest
+    asserts:
+      - equal:
+          path: metadata.name
+          value: other-ingest
+        documentSelector:
+          path: metadata.name
+          value: other-ingest
+      - equal:
+          path: metadata.name
+          value: other-app
+        documentSelector:
+          path: metadata.name
+          value: other-app
+
+  - it: truncates long names to 63 characters while keeping the part suffix
+    set:
+      fullnameOverride: this-is-a-very-long-name-that-goes-way-past-sixty-three-characters-total
+      topology: split-all
+    asserts:
+      - matchRegex:
+          path: metadata.name
+          pattern: "^.{53}-processor$"
+        documentIndex: 1
+      - matchRegex:
+          path: metadata.name
+          pattern: "^.{59}-app$"
+        documentIndex: 2
+
+  - it: the processor Deployment has no api, OIDC, themes or TLS settings
+    set:
+      topology: split-all
+      auth.oidc.issuer: https://issuer.example
+      auth.oidc.existingSecret: opsie-oidc
+      auth.oidc.redirectUrl: https://opsie.example/api/auth/callback
+      themes.existingConfigMap: themes
+      tls.mode: native
+      tls.existingSecret: tls
+    documentSelector:
+      path: metadata.name
+      value: opsie-processor
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "JWT_SECRET")]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "OIDC_ISSUER")]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "THEMES_PATH")]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "TLS_CERT_FILE")]
+      - notExists:
+          path: spec.template.spec.volumes
+      - notExists:
+          path: spec.template.spec.containers[0].volumeMounts

@@ -1,0 +1,21 @@
+{{- $parts := include "opsie.parts" . | fromJsonArray }}
+Opsie {{ .Chart.AppVersion }} ({{ .Values.topology }}) is installed as release {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+{{- if eq (toString .Values.image.tag) "v0" }}
+
+WARNING: image.tag is the placeholder v0. Set image.repository and image.tag to the Opsie image you want to run.
+{{- end }}
+
+Services (ClusterIP, port 80):
+{{- range $parts }}
+  {{ include "opsie.partFullname" (dict "root" $ "part" .) }}
+{{- end }}
+{{- if and (not .Values.ingresses) (not .Values.httpRoutes) }}
+
+No ingresses or httpRoutes are configured. To reach the UI:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "opsie.partFullname" (dict "root" . "part" (ternary "app" "all" (ne .Values.topology "all-in-one"))) }} 8080:80
+{{- end }}
+
+Do not expose /metrics through catch-all routes: it is served unauthenticated on the HTTP port of every part and is meant to be scraped from inside the cluster.
+
+Changing an existing Secret or ConfigMap that the chart only references does not restart the pods. Restart the Deployments after such a change.

@@ -1,0 +1,92 @@
+suite: migration init container
+templates:
+  - templates/deployment.yaml
+values:
+  - ../ci/split-all-values.yaml
+tests:
+  - it: renders the init container in every part of split-all
+    set:
+      database.migrate.mode: initContainer
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].command
+          value:
+            - /app/mssql-migrate
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.initContainers[0].command
+          value:
+            - /app/mssql-migrate
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[0].command
+          value:
+            - /app/mssql-migrate
+        documentIndex: 2
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: example.invalid/opsie:v0.0.0-test
+        documentIndex: 2
+      - equal:
+          path: spec.template.spec.initContainers[0].env[0].valueFrom.secretKeyRef.name
+          value: opsie-database
+        documentIndex: 2
+
+  - it: renders the init container in all-in-one
+    set:
+      topology: all-in-one
+      database.migrate.mode: initContainer
+      database.migrate.dryRun: true
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].args
+          value:
+            - --dry-run
+
+  - it: initContainerParts limits it to app
+    set:
+      database.migrate.mode: initContainer
+      database.migrate.initContainerParts:
+        - app
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
+        documentIndex: 0
+      - notExists:
+          path: spec.template.spec.initContainers
+        documentIndex: 1
+      - exists:
+          path: spec.template.spec.initContainers
+        documentIndex: 2
+
+  - it: hook mode renders no init container
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
+        documentIndex: 0
+
+  - it: none renders no init container
+    set:
+      database.migrate.mode: none
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
+        documentIndex: 2
+
+  - it: postgres renders no init container
+    set:
+      database.type: postgres
+      database.migrate.mode: initContainer
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
+        documentIndex: 2
+
+  - it: enabled false renders no init container
+    set:
+      database.migrate.enabled: false
+      database.migrate.mode: initContainer
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
+        documentIndex: 2

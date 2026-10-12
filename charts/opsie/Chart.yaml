@@ -1,0 +1,21 @@
+apiVersion: v2
+name: opsie
+description: A Helm chart for Opsie, the on-call and alert management platform (external MSSQL or PostgreSQL, Valkey required)
+
+type: application
+
+version: 0.1.0
+appVersion: "v0"
+
+kubeVersion: ">=1.35.0-0"
+
+home: https://github.com/AB-Lindex/helm-charts
+sources:
+  - https://github.com/AB-Lindex/helm-charts
+  - https://github.com/AB-Lindex/opsie
+
+dependencies:
+  - name: valkey
+    version: 0.12.0
+    repository: https://valkey.io/valkey-helm/
+    condition: valkey.enabled

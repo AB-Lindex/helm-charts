@@ -1,0 +1,76 @@
+suite: service
+templates:
+  - templates/service.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: all-in-one renders one ClusterIP Service on port 80
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: opsie
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports
+          value:
+            - name: http
+              port: 80
+              targetPort: http
+              protocol: TCP
+      - equal:
+          path: spec.selector["app.kubernetes.io/component"]
+          value: all
+
+  - it: split-all renders a Service for every part including processor
+    set:
+      topology: split-all
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: metadata.name
+          value: opsie-processor
+        documentIndex: 1
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: processor
+        documentIndex: 1
+
+  - it: native TLS adds the https port to traffic parts only
+    set:
+      topology: split-all
+      tls.mode: native
+      tls.existingSecret: tls
+    asserts:
+      - contains:
+          path: spec.ports
+          content:
+            name: https
+            port: 443
+            targetPort: https
+            protocol: TCP
+        documentIndex: 0
+      - contains:
+          path: spec.ports
+          content:
+            name: https
+            port: 443
+            targetPort: https
+            protocol: TCP
+        documentIndex: 2
+      - lengthEqual:
+          path: spec.ports
+          count: 1
+        documentIndex: 1
+
+  - it: no https port when tls.mode is none or proxy
+    set:
+      tls.mode: proxy
+    asserts:
+      - lengthEqual:
+          path: spec.ports
+          count: 1

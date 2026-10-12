@@ -1,0 +1,322 @@
+# Default values for the opsie chart.
+# Every secret input is an existing Secret referenced by name; the chart never holds a secret value.
+
+# -- Base name of every resource; parts add -ingest, -processor, -app. Empty falls back to <release>-opsie.
+fullnameOverride: opsie
+# -- Overrides the chart name used in labels and the default full name.
+nameOverride: ""
+
+image:
+  # -- Placeholder: the public image address is not known yet. Set it in your values file; rendering fails while it is TBD.
+  repository: TBD
+  # -- Placeholder: set the real version in your values file. Empty falls back to the chart appVersion.
+  tag: v0
+  # -- Image pull policy for every container.
+  pullPolicy: IfNotPresent
+  # -- Image pull secrets, a list of { name: ... }.
+  pullSecrets: []
+
+# -- Deployment topology: all-in-one | split-ingest | split-all. Changing it after deployment is not tested.
+topology: all-in-one
+
+topologySpread:
+  # -- Spread every part's pods; on whatever the replica count.
+  enabled: true
+  # -- Constraints used for every part unless the part sets its own. The chart fills labelSelector with the part's own pods unless one is given.
+  constraints:
+    - maxSkew: 1
+      topologyKey: agentpool
+      whenUnsatisfiable: ScheduleAnyway
+    # - maxSkew: 1
+    #   topologyKey: topology.kubernetes.io/zone
+    #   whenUnsatisfiable: ScheduleAnyway
+    # - maxSkew: 1
+    #   topologyKey: kubernetes.io/hostname
+    #   whenUnsatisfiable: ScheduleAnyway
+
+# -- Settings per part. Empty replicaCount means the topology default (all-in-one: 1, split-ingest: 1 per part, split-all: 2 per part).
+# Every part accepts: replicaCount, resources, nodeSelector, tolerations, affinity,
+# topologySpreadConstraints (replaces topologySpread.constraints for the part), annotations
+# (Deployment annotations, for example an Argo CD sync-wave), podLabels, podAnnotations and extraEnv.
+# A part that does not exist in the chosen topology must stay empty.
+parts:
+  all:
+    replicaCount: ""
+    resources: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    topologySpreadConstraints: []
+    annotations: {}
+    podLabels: {}
+    podAnnotations: {}
+    extraEnv: []
+  ingest:
+    replicaCount: ""
+    resources: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    topologySpreadConstraints: []
+    annotations: {}
+    podLabels: {}
+    podAnnotations: {}
+    extraEnv: []
+  processor:
+    replicaCount: ""
+    resources: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    topologySpreadConstraints: []
+    annotations: {}
+    podLabels: {}
+    podAnnotations: {}
+    extraEnv: []
+  app:
+    replicaCount: ""
+    resources: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    topologySpreadConstraints: []
+    annotations: {}
+    podLabels: {}
+    podAnnotations: {}
+    extraEnv: []
+
+# -- Rolling update of every part's Deployment: one pod at a time, never below the replica count.
+strategy:
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+podDisruptionBudget:
+  # -- auto | true | false. auto renders a budget only for parts with 2 or more replicas.
+  enabled: auto
+  # -- Set only one of maxUnavailable and minAvailable. To use minAvailable set maxUnavailable: null.
+  maxUnavailable: 1
+  # -- Alternative to maxUnavailable; a number or a percentage.
+  minAvailable: null
+
+serviceAccount:
+  # -- Create the ServiceAccount used by every part.
+  create: true
+  # -- Empty means the base name (opsie).
+  name: ""
+  # -- Annotations on the ServiceAccount, for example for workload identity.
+  annotations: {}
+
+database:
+  # -- mssql | postgres. The memory provider is never offered.
+  type: mssql
+  # -- Required: name of an existing Secret holding the connection string.
+  existingSecret: ""
+  # -- Key in the Secret, form sqlserver://user:pass@host:1433?database=opsie
+  existingSecretKey: connection-string
+  migrate:
+    # -- Run mssql-migrate (mssql only).
+    enabled: true
+    # -- hook | initContainer | none
+    mode: hook
+    # -- Pass --dry-run: preview without changing the database.
+    dryRun: false
+    # -- hook mode: Job backoffLimit.
+    backoffLimit: 1
+    # -- hook mode: Job activeDeadlineSeconds.
+    activeDeadlineSeconds: 600
+    # -- Resources of the migration container.
+    resources: {}
+    # -- Extra annotations on the hook Job, for example argocd.argoproj.io/hook: PreSync. They win over the Helm hook annotations.
+    annotations: {}
+    # -- initContainer mode: which parts run it. Empty means every part.
+    initContainerParts: []
+    # -- Labels on the migration pod, for example azure.workload.identity/use.
+    podLabels: {}
+    # -- Annotations on the migration pod.
+    podAnnotations: {}
+    # -- Extra environment of the migration container.
+    extraEnv: []
+    serviceAccount:
+      # -- true renders a service account as a hook, created before the Job.
+      create: false
+      # -- Existing account when create is false; empty means the namespace default. <base>-migrate when create is true.
+      name: ""
+      # -- Annotations on the migration service account.
+      annotations: {}
+
+# -- Valkey sub-chart (upstream valkey-io/valkey-helm). Valkey is required: set valkey.enabled or redis.enabled, never both and never neither.
+# Everything not listed here is passed through to the sub-chart.
+valkey:
+  enabled: false
+  auth:
+    # -- The chart refuses to render with it off; Opsie does not run Valkey without a password.
+    enabled: true
+    # -- Required: existing Secret; the key named after the user holds the password (user default: key default).
+    usersExistingSecret: ""
+    aclUsers:
+      default:
+        permissions: "~* &* +@all"
+  # fullnameOverride: opsie-valkey   # pins the Service name when the release is not called opsie
+
+# -- External Valkey-compatible service (Valkey or Redis with pub/sub; not Microsoft Garnet), used when valkey.enabled is false.
+redis:
+  enabled: false
+  # -- host:port of the service.
+  addr: ""
+  # -- Database number.
+  db: 0
+  # -- Required: existing Secret holding the password.
+  existingSecret: ""
+  # -- Key in the Secret.
+  existingSecretKey: password
+
+auth:
+  jwt:
+    # -- Required: existing Secret with keys jwt-secret, jwt-secret-next (optional) and jwt-secret-previous (optional).
+    existingSecret: ""
+  oidc:
+    # -- OIDC issuer URL. Empty disables OIDC settings.
+    issuer: ""
+    # -- Empty derives https://<first host>/api/auth/callback from ingresses or httpRoutes.
+    redirectUrl: ""
+    # -- Existing Secret with keys client-id and client-secret.
+    existingSecret: ""
+    # -- OIDC scopes.
+    scopes: openid,profile,email
+  # -- SESSION_CACHE_TTL for parts that run api, a duration of at most 30s. Empty leaves the application default.
+  sessionCacheTtl: ""
+  adminEmail:
+    # -- Existing ConfigMap holding the admin email file, mounted at /app/config/admin.
+    existingConfigMap: ""
+    # -- Key (file name) in the ConfigMap.
+    key: admin-emails
+
+tls:
+  # -- none | proxy | native. proxy trusts X-Forwarded-Proto from the Ingress or Gateway; native serves TLS from tls.existingSecret.
+  mode: none
+  # -- kubernetes.io/tls Secret for native mode.
+  existingSecret: ""
+  # -- Mount path of the certificate in native mode.
+  mountPath: /app/tls
+  # -- Redirect HTTP to HTTPS (native mode only).
+  httpsRedirect: false
+  # -- HSTS_MAX_AGE as a duration such as 720h. Empty leaves it unset.
+  hstsMaxAge: ""
+
+alerts:
+  # -- ALERT_REOPEN_WINDOW; empty leaves the application default.
+  reopenWindow: ""
+  # -- ALERT_ZOMBIE_THRESHOLD; empty leaves the application default.
+  zombieThreshold: ""
+
+themes:
+  # -- Existing ConfigMap with custom themes, mounted at /app/themes/custom.
+  existingConfigMap: ""
+
+metrics:
+  serviceMonitor:
+    # -- Create a Prometheus Operator ServiceMonitor that scrapes every part.
+    enabled: false
+    # -- Scrape interval.
+    interval: 30s
+    # -- Metrics path; fixed by the application design.
+    path: /metrics
+    # -- Labels for the Prometheus instance's serviceMonitorSelector.
+    labels: {}
+
+# -- Labels on the pods of every part.
+podLabels: {}
+# -- Annotations on the pods of every part.
+podAnnotations: {}
+# -- Extra environment variables on every part.
+extraEnv: []
+# -- Extra envFrom sources on every part.
+extraEnvFrom: []
+
+# -- Default resources of every part; a part's own resources replace them.
+resources: {}
+# -- Pod security context.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+# -- Container security context.
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# -- External routing as Ingress objects. Any number of entries.
+ingresses: []
+  # - name: users              # required, unique; resource is <base>-users
+  #   className: nginx
+  #   annotations: {}
+  #   hosts:                   # the chart adds the /api/events rule itself in split topologies
+  #     - host: opsie.example.com
+  #       paths:               # empty means / with pathType Prefix
+  #         - path: /
+  #           pathType: Prefix
+  #   tls: []
+
+# -- External routing as Gateway API HTTPRoute objects. Any number of entries.
+httpRoutes: []
+  # - name: users              # required, unique; resource is <base>-users
+  #   annotations: {}
+  #   parentRefs:              # required: the Gateway (and optional listener) to attach to
+  #     - name: gateway
+  #       namespace: gateway-system
+  #   hostnames:
+  #     - opsie.example.com
+  #   filters: []              # copied into every generated rule
+  #   matchHeaders: []         # merged into every generated match, for example [{name: X-Env, value: prod}]
+
+# -- Extra manifests rendered with the release; strings and maps are both passed through tpl.
+# The commented Secrets are examples of what the chart expects when the existingSecret values are set.
+# Do not keep real secret values in a values file: use a SealedSecret, an ExternalSecret or create the Secrets by hand.
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: Secret
+  #   metadata:
+  #     name: opsie-database               # database.existingSecret
+  #     annotations:                        # needed in hook mode on a first install: the hook runs before other resources exist
+  #       helm.sh/hook: pre-install,pre-upgrade
+  #       helm.sh/hook-weight: "-10"
+  #   type: Opaque
+  #   stringData:
+  #     connection-string: sqlserver://opsie:CHANGE-ME@mssql.example:1433?database=opsie   # database.existingSecretKey
+  # - apiVersion: v1
+  #   kind: Secret
+  #   metadata:
+  #     name: opsie-jwt                    # auth.jwt.existingSecret
+  #   type: Opaque
+  #   stringData:
+  #     jwt-secret: CHANGE-ME-at-least-32-characters
+  #     jwt-secret-next: ""                # optional, rotation
+  #     jwt-secret-previous: ""            # optional, rotation
+  # - apiVersion: v1
+  #   kind: Secret
+  #   metadata:
+  #     name: opsie-oidc                   # auth.oidc.existingSecret
+  #   type: Opaque
+  #   stringData:
+  #     client-id: CHANGE-ME
+  #     client-secret: CHANGE-ME
+  # - apiVersion: v1
+  #   kind: Secret
+  #   metadata:
+  #     name: opsie-valkey                 # valkey.auth.usersExistingSecret (sub-chart); the key is the ACL user name
+  #   type: Opaque
+  #   stringData:
+  #     default: CHANGE-ME
+  # - apiVersion: v1
+  #   kind: Secret
+  #   metadata:
+  #     name: opsie-redis                  # redis.existingSecret (external Redis/Valkey)
+  #   type: Opaque
+  #   stringData:
+  #     password: CHANGE-ME                # redis.existingSecretKey

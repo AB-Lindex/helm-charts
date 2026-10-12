@@ -1,0 +1,25 @@
+{{- $root := . }}
+{{- range $part := (include "opsie.parts" . | fromJsonArray) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opsie.partFullname" (dict "root" $root "part" $part) }}
+  labels:
+    {{- include "opsie.partLabels" (dict "root" $root "part" $part) | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    {{- if and (include "opsie.partServesTraffic" $part) (eq $root.Values.tls.mode "native") }}
+    - name: https
+      port: 443
+      targetPort: https
+      protocol: TCP
+    {{- end }}
+  selector:
+    {{- include "opsie.selectorLabels" (dict "root" $root "part" $part) | nindent 4 }}
+{{- end }}

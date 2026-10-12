@@ -1,0 +1,50 @@
+{{- $root := . }}
+{{- $split := ne .Values.topology "all-in-one" }}
+{{- $uiPart := ternary "app" "all" $split }}
+{{- range $entry := .Values.ingresses }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" $root "suffix" $entry.name) }}
+  labels:
+    {{- include "opsie.labels" $root | nindent 4 }}
+  {{- with $entry.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $entry.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with $entry.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range $host := ($entry.hosts | default (list dict)) }}
+    - http:
+        paths:
+          {{- if $split }}
+          - path: /api/events
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "opsie.partFullname" (dict "root" $root "part" "ingest") }}
+                port:
+                  number: 80
+          {{- end }}
+          {{- range $path := ($host.paths | default (list (dict "path" "/" "pathType" "Prefix"))) }}
+          - path: {{ $path.path | default "/" }}
+            pathType: {{ $path.pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ include "opsie.partFullname" (dict "root" $root "part" $uiPart) }}
+                port:
+                  number: 80
+          {{- end }}
+      {{- with $host.host }}
+      host: {{ . | quote }}
+      {{- end }}
+    {{- end }}
+{{- end }}

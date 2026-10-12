@@ -1,0 +1,42 @@
+suite: extraobjects
+templates:
+  - templates/extraobjects.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: renders nothing for an empty list
+    set:
+      extraObjects: []
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a map item and a templated string item
+    set:
+      extraObjects:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: from-map
+          data:
+            release: "{{ .Release.Name }}"
+        - |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: {{ .Release.Name }}-from-string
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: from-map
+        documentIndex: 0
+      - equal:
+          path: data.release
+          value: RELEASE-NAME
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-from-string
+        documentIndex: 1

@@ -1,0 +1,9 @@
+{{- include "opsie.validate" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" . "suffix" "config") }}
+  labels:
+    {{- include "opsie.labels" . | nindent 4 }}
+data:
+  {{- include "opsie.configData" . | nindent 2 }}

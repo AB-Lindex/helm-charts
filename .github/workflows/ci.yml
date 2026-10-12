@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - "charts/**"
+      - "ct.yaml"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+env:
+  KUBE_VERSION: "1.35.0"
+  HELM_UNITTEST_VERSION: v1.0.3
+  KUBECONFORM_VERSION: v0.6.7
+
+jobs:
+  opsie:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Add chart dependency repositories
+        run: helm repo add valkey https://valkey.io/valkey-helm/
+
+      - name: Build chart dependencies
+        run: helm dependency build charts/opsie
+
+      - name: Install helm-unittest
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version "$HELM_UNITTEST_VERSION"
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin kubeconform
+
+      - name: Lint
+        run: |
+          for f in charts/opsie/ci/*-values.yaml; do
+            helm lint charts/opsie --kube-version "$KUBE_VERSION" -f "$f"
+          done
+
+      - name: Unit tests
+        run: helm unittest charts/opsie
+
+      - name: Schema and scaffold tests
+        run: bash charts/opsie/tests/schema-test.sh
+
+      - name: Documentation checks
+        run: bash charts/opsie/tests/docs-test.sh
+
+      - name: Validate manifests
+        run: |
+          for f in charts/opsie/ci/*-values.yaml; do
+            helm template opsie charts/opsie --kube-version "$KUBE_VERSION" -f "$f" \
+              | kubeconform -strict -ignore-missing-schemas -kubernetes-version "$KUBE_VERSION" -summary \
+                  -schema-location default \
+                  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          done
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.7.0
+
+      - name: Chart-testing lint
+        run: ct lint --config ct.yaml --charts charts/opsie
+
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color

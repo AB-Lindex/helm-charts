@@ -1,0 +1,97 @@
+suite: valkey and redis wiring
+templates:
+  - templates/deployment.yaml
+  - templates/configmap.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: the sub-chart renders REDIS_ADDR and the password from usersExistingSecret key default
+    asserts:
+      - equal:
+          path: data.REDIS_ADDR
+          value: RELEASE-NAME-valkey:6379
+        template: templates/configmap.yaml
+      - equal:
+          path: data.USE_REDIS
+          value: "true"
+        template: templates/configmap.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opsie-valkey
+                key: default
+        template: templates/deployment.yaml
+
+  - it: the sub-chart address is opsie-valkey for the release name opsie
+    release:
+      name: opsie
+    asserts:
+      - equal:
+          path: data.REDIS_ADDR
+          value: opsie-valkey:6379
+        template: templates/configmap.yaml
+
+  - it: aclUsers.default.passwordKey switches the key
+    set:
+      valkey.auth.aclUsers.default.passwordKey: pw
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.key
+          value: pw
+        template: templates/deployment.yaml
+
+  - it: valkey.fullnameOverride gives the address
+    set:
+      valkey.fullnameOverride: x
+    asserts:
+      - equal:
+          path: data.REDIS_ADDR
+          value: x:6379
+        template: templates/configmap.yaml
+
+  - it: an external Redis uses its address, database and Secret key
+    set:
+      valkey.enabled: false
+      redis.enabled: true
+      redis.addr: redis.example:6379
+      redis.db: 2
+      redis.existingSecret: opsie-redis
+      redis.existingSecretKey: pass
+    asserts:
+      - equal:
+          path: data.REDIS_ADDR
+          value: redis.example:6379
+        template: templates/configmap.yaml
+      - equal:
+          path: data.REDIS_DB
+          value: "2"
+        template: templates/configmap.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opsie-redis
+                key: pass
+        template: templates/deployment.yaml
+
+  - it: USE_REDIS is true in every topology
+    set:
+      topology: split-ingest
+    asserts:
+      - equal:
+          path: data.USE_REDIS
+          value: "true"
+        template: templates/configmap.yaml
+
+  - it: V06 and V07 produce their messages
+    set:
+      valkey.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No Valkey source is selected'
+        template: templates/configmap.yaml

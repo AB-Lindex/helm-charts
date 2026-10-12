@@ -11,6 +11,7 @@ permissions:
   contents: read
 
 env:
+  HELM_VERSION: v3.18.6
   KUBE_VERSION: "1.35.0"
   HELM_UNITTEST_VERSION: v1.0.3
   KUBECONFORM_VERSION: v0.6.7
@@ -26,6 +27,8 @@ jobs:
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
 
       - name: Add chart dependency repositories
         run: helm repo add valkey https://valkey.io/valkey-helm/

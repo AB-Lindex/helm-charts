@@ -1,0 +1,17 @@
+image:
+  repository: example.invalid/opsie
+  tag: v0.0.0-test
+
+topology: split-all
+
+database:
+  existingSecret: opsie-database
+
+auth:
+  jwt:
+    existingSecret: opsie-jwt
+
+valkey:
+  enabled: true
+  auth:
+    usersExistingSecret: opsie-valkey

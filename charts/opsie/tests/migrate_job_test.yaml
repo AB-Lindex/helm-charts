@@ -1,0 +1,183 @@
+suite: migration hook
+templates:
+  - templates/migrate-job.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: renders the hook Job by default
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Job
+      - equal:
+          path: metadata.name
+          value: opsie-migrate
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: pre-install,pre-upgrade
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "0"
+      - equal:
+          path: spec.backoffLimit
+          value: 1
+      - equal:
+          path: spec.activeDeadlineSeconds
+          value: 600
+      - notExists:
+          path: spec.ttlSecondsAfterFinished
+      - equal:
+          path: spec.template.spec.restartPolicy
+          value: Never
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: example.invalid/opsie:v0.0.0-test
+      - equal:
+          path: spec.template.spec.containers[0].command
+          value:
+            - /app/mssql-migrate
+      - notExists:
+          path: spec.template.spec.containers[0].args
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: DB_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: opsie-database
+                  key: connection-string
+      - notExists:
+          path: spec.template.spec.containers[0].envFrom
+      - notExists:
+          path: spec.template.spec.serviceAccountName
+
+  - it: dryRun adds --dry-run
+    set:
+      database.migrate.dryRun: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value:
+            - --dry-run
+
+  - it: user annotations sit next to and win over the Helm hook annotations
+    set:
+      database.migrate.annotations:
+        argocd.argoproj.io/hook: PreSync
+        helm.sh/hook-weight: "3"
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/hook"]
+          value: PreSync
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: pre-install,pre-upgrade
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "3"
+
+  - it: backoffLimit, deadline, resources, labels, annotations and env are configurable
+    set:
+      database.migrate.backoffLimit: 4
+      database.migrate.activeDeadlineSeconds: 60
+      database.migrate.resources:
+        limits:
+          cpu: 500m
+      database.migrate.podLabels:
+        azure.workload.identity/use: "true"
+      database.migrate.podAnnotations:
+        a: b
+      database.migrate.extraEnv:
+        - name: X
+          value: y
+    asserts:
+      - equal:
+          path: spec.backoffLimit
+          value: 4
+      - equal:
+          path: spec.activeDeadlineSeconds
+          value: 60
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 500m
+      - equal:
+          path: spec.template.metadata.labels["azure.workload.identity/use"]
+          value: "true"
+      - equal:
+          path: spec.template.metadata.annotations.a
+          value: b
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: X
+            value: y
+
+  - it: a service account of its own is rendered as a hook and used by the Job
+    set:
+      database.migrate.serviceAccount.create: true
+      database.migrate.serviceAccount.annotations:
+        azure.workload.identity/client-id: abc
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: ServiceAccount
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: opsie-migrate
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "-5"
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["azure.workload.identity/client-id"]
+          value: abc
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: opsie-migrate
+        documentIndex: 1
+
+  - it: an existing service account is used without rendering one
+    set:
+      database.migrate.serviceAccount.name: existing
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: existing
+
+  - it: none renders nothing
+    set:
+      database.migrate.mode: none
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: enabled false renders nothing
+    set:
+      database.migrate.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: postgres renders nothing
+    set:
+      database.type: postgres
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: initContainer mode renders no Job
+    set:
+      database.migrate.mode: initContainer
+    asserts:
+      - hasDocuments:
+          count: 0

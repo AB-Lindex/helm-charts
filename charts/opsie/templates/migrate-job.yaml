@@ -1,0 +1,58 @@
+{{- /*
+Migration. Mode hook renders this Job (an Argo CD PreSync hook under Argo CD); mode initContainer renders the
+same container in the Deployments; mode none, enabled=false and database.type=postgres render nothing.
+Postgres schema handling stays outside the chart until it is clarified whether the server migrates Postgres.
+The hook runs before the release's other resources exist on a first install, so it uses only the image and the
+existing database Secret, never the chart's ServiceAccount, ConfigMap or Valkey.
+*/}}
+{{- if include "opsie.migrateMode" (dict "root" . "mode" "hook") }}
+{{- $m := .Values.database.migrate }}
+{{- $saName := include "opsie.migrateServiceAccountName" . }}
+{{- $podLabels := mergeOverwrite (dict "app.kubernetes.io/name" (include "opsie.name" .) "app.kubernetes.io/instance" .Release.Name "app.kubernetes.io/component" "migrate") ($m.podLabels | default dict) }}
+{{- if $m.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $saName }}
+  labels:
+    {{- include "opsie.labels" . | nindent 4 }}
+  annotations:
+    {{- mergeOverwrite (dict "helm.sh/hook" "pre-install,pre-upgrade" "helm.sh/hook-weight" "-5" "helm.sh/hook-delete-policy" "before-hook-creation") ($m.serviceAccount.annotations | default dict) | toYaml | nindent 4 }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" . "suffix" "migrate") }}
+  labels:
+    {{- include "opsie.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    {{- mergeOverwrite (dict "helm.sh/hook" "pre-install,pre-upgrade" "helm.sh/hook-weight" "0" "helm.sh/hook-delete-policy" "before-hook-creation") ($m.annotations | default dict) | toYaml | nindent 4 }}
+spec:
+  backoffLimit: {{ $m.backoffLimit }}
+  activeDeadlineSeconds: {{ $m.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- toYaml $podLabels | nindent 8 }}
+      {{- with $m.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      restartPolicy: Never
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $saName }}
+      serviceAccountName: {{ . }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - {{ include "opsie.migrateContainer" . | nindent 10 | trim }}
+{{- end }}

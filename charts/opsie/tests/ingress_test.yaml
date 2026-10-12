@@ -1,0 +1,148 @@
+suite: ingress
+templates:
+  - templates/ingress.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: renders nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders one Ingress per entry with its own class
+    set:
+      ingresses:
+        - name: users
+          className: nginx
+          hosts:
+            - host: opsie.example
+        - name: senders
+          className: internal
+          hosts:
+            - host: events.example
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: opsie-users
+        documentIndex: 0
+      - equal:
+          path: spec.ingressClassName
+          value: nginx
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: opsie-senders
+        documentIndex: 1
+      - equal:
+          path: spec.ingressClassName
+          value: internal
+        documentIndex: 1
+
+  - it: all-in-one routes only to the all Service
+    set:
+      ingresses:
+        - name: users
+          hosts:
+            - host: opsie.example
+    asserts:
+      - equal:
+          path: spec.rules
+          value:
+            - host: opsie.example
+              http:
+                paths:
+                  - path: /
+                    pathType: Prefix
+                    backend:
+                      service:
+                        name: opsie
+                        port:
+                          number: 80
+
+  - it: split topologies route /api/events to ingest first and the rest to app
+    set:
+      topology: split-all
+      ingresses:
+        - name: users
+          hosts:
+            - host: opsie.example
+              paths:
+                - path: /
+                  pathType: Prefix
+                - path: /docs
+                  pathType: ImplementationSpecific
+    asserts:
+      - equal:
+          path: spec.rules[0].http.paths[0]
+          value:
+            path: /api/events
+            pathType: Prefix
+            backend:
+              service:
+                name: opsie-ingest
+                port:
+                  number: 80
+      - equal:
+          path: spec.rules[0].http.paths[1].backend.service.name
+          value: opsie-app
+      - equal:
+          path: spec.rules[0].http.paths[2]
+          value:
+            path: /docs
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: opsie-app
+                port:
+                  number: 80
+
+  - it: split-ingest routes the same way
+    set:
+      topology: split-ingest
+      ingresses:
+        - name: users
+          hosts:
+            - host: opsie.example
+    asserts:
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.name
+          value: opsie-ingest
+      - equal:
+          path: spec.rules[0].http.paths[1].backend.service.name
+          value: opsie-app
+
+  - it: an empty className omits ingressClassName and annotations and tls pass through
+    set:
+      ingresses:
+        - name: users
+          className: ""
+          annotations:
+            a: b
+          tls:
+            - secretName: opsie-tls
+              hosts:
+                - opsie.example
+          hosts:
+            - host: opsie.example
+    asserts:
+      - notExists:
+          path: spec.ingressClassName
+      - equal:
+          path: metadata.annotations.a
+          value: b
+      - equal:
+          path: spec.tls[0].secretName
+          value: opsie-tls
+
+  - it: an entry without hosts renders one rule without host
+    set:
+      ingresses:
+        - name: users
+    asserts:
+      - notExists:
+          path: spec.rules[0].host
+      - equal:
+          path: spec.rules[0].http.paths[0].path
+          value: /

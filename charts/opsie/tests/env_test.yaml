@@ -1,0 +1,284 @@
+suite: environment and secret distribution
+templates:
+  - templates/deployment.yaml
+values:
+  - ../ci/split-all-values.yaml
+tests:
+  - it: DB_CONNECTION_STRING is a secretKeyRef in every part
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DB_CONNECTION_STRING
+            valueFrom:
+              secretKeyRef:
+                name: opsie-database
+                key: connection-string
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DB_CONNECTION_STRING
+            valueFrom:
+              secretKeyRef:
+                name: opsie-database
+                key: connection-string
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DB_CONNECTION_STRING
+            valueFrom:
+              secretKeyRef:
+                name: opsie-database
+                key: connection-string
+        documentIndex: 2
+
+  - it: the database Secret key is configurable
+    set:
+      database.existingSecretKey: cs
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef.key
+          value: cs
+
+  - it: JWT secrets go to app only, the next and previous keys are optional
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JWT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: opsie-jwt
+                key: jwt-secret
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JWT_SECRET_NEXT
+            valueFrom:
+              secretKeyRef:
+                name: opsie-jwt
+                key: jwt-secret-next
+                optional: true
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JWT_SECRET_PREVIOUS
+            valueFrom:
+              secretKeyRef:
+                name: opsie-jwt
+                key: jwt-secret-previous
+                optional: true
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "JWT_SECRET")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "JWT_SECRET")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor
+
+  - it: all runs the api settings in all-in-one
+    set:
+      topology: all-in-one
+      auth.oidc.issuer: https://issuer.example
+      auth.oidc.existingSecret: opsie-oidc
+      auth.oidc.redirectUrl: https://opsie.example/api/auth/callback
+    asserts:
+      - exists:
+          path: spec.template.spec.containers[0].env[?(@.name == "JWT_SECRET")]
+      - exists:
+          path: spec.template.spec.containers[0].env[?(@.name == "OIDC_ISSUER")]
+
+  - it: OIDC settings render for app only and only with an issuer
+    set:
+      auth.oidc.issuer: https://issuer.example
+      auth.oidc.existingSecret: opsie-oidc
+      auth.oidc.redirectUrl: https://opsie.example/api/auth/callback
+      auth.oidc.scopes: openid,email
+      auth.sessionCacheTtl: 20s
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OIDC_ISSUER
+            value: https://issuer.example
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OIDC_SCOPES
+            value: openid,email
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OIDC_REDIRECT_URL
+            value: https://opsie.example/api/auth/callback
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OIDC_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: opsie-oidc
+                key: client-id
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OIDC_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: opsie-oidc
+                key: client-secret
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SESSION_CACHE_TTL
+            value: 20s
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "OIDC_ISSUER")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SESSION_CACHE_TTL")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor
+
+  - it: OIDC variables are absent without an issuer
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "OIDC_ISSUER")]
+        documentIndex: 2
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "OIDC_CLIENT_ID")]
+        documentIndex: 2
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SESSION_CACHE_TTL")]
+        documentIndex: 2
+
+  - it: themes and the admin email file are mounted into app only
+    set:
+      themes.existingConfigMap: opsie-themes
+      auth.adminEmail.existingConfigMap: opsie-admins
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: THEMES_PATH
+            value: /app/themes/custom
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ADMIN_EMAIL_FILE
+            value: /app/config/admin/admin-emails
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: themes
+            mountPath: /app/themes/custom
+            readOnly: true
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: admin-email
+            mountPath: /app/config/admin
+            readOnly: true
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: themes
+            configMap:
+              name: opsie-themes
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - notExists:
+          path: spec.template.spec.volumes
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "ADMIN_EMAIL_FILE")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor
+
+  - it: the admin email key is configurable
+    set:
+      auth.adminEmail.existingConfigMap: opsie-admins
+      auth.adminEmail.key: admins.txt
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ADMIN_EMAIL_FILE
+            value: /app/config/admin/admins.txt
+        documentIndex: 2
+
+  - it: extraEnv, extraEnvFrom and part extraEnv are appended last
+    set:
+      extraEnv:
+        - name: GLOBAL
+          value: g
+      extraEnvFrom:
+        - configMapRef:
+            name: more
+      parts.app.extraEnv:
+        - name: PART
+          value: p
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[6].name
+          value: GLOBAL
+        documentIndex: 2
+      - equal:
+          path: spec.template.spec.containers[0].env[7].name
+          value: PART
+        documentIndex: 2
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[1].configMapRef.name
+          value: more
+        documentIndex: 2

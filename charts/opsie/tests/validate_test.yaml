@@ -1,0 +1,305 @@
+suite: validation
+templates:
+  - templates/configmap.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: renders the all-in-one fixture
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: V01 rejects database.type memory through the schema
+    set:
+      database.type: memory
+    asserts:
+      - failedTemplate:
+          errorPattern: "database.type"
+
+  - it: V02 reports the TBD image placeholder
+    set:
+      image.repository: TBD
+    asserts:
+      - failedTemplate:
+          errorPattern: 'image\.repository is not set \(image\.repository, currently "TBD"\)\. Set image\.repository'
+
+  - it: V02 reports an empty image repository
+    set:
+      image.repository: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'image\.repository is not set \(image\.repository, currently ""\)'
+
+  - it: V03 reports a missing database Secret
+    set:
+      database.existingSecret: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No database Secret is named \(database\.existingSecret\)\.'
+
+  - it: V04 reports a missing JWT Secret
+    set:
+      auth.jwt.existingSecret: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No JWT Secret is named \(auth\.jwt\.existingSecret\)\.'
+
+  - it: V05 reports an unknown topology when the schema is not applied
+    set:
+      topology: split-al
+    asserts:
+      - failedTemplate:
+          errorPattern: 'topology'
+
+  - it: V06 reports no Valkey source
+    set:
+      valkey.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No Valkey source is selected \(valkey\.enabled, redis\.enabled\)\. Set valkey\.enabled=true'
+
+  - it: V07 reports two Valkey sources
+    set:
+      redis.enabled: true
+      redis.addr: redis:6379
+      redis.existingSecret: opsie-redis
+    asserts:
+      - failedTemplate:
+          errorPattern: 'Two Valkey sources are selected \(valkey\.enabled, redis\.enabled\)\.'
+
+  - it: V08 reports redis.enabled without addr
+    set:
+      valkey.enabled: false
+      redis.enabled: true
+      redis.existingSecret: opsie-redis
+    asserts:
+      - failedTemplate:
+          errorPattern: 'redis\.enabled is true without an address \(redis\.addr\)\.'
+
+  - it: V08 reports redis.enabled without a password Secret
+    set:
+      valkey.enabled: false
+      redis.enabled: true
+      redis.addr: redis:6379
+    asserts:
+      - failedTemplate:
+          errorPattern: 'redis\.enabled is true without a password Secret \(redis\.existingSecret\)\.'
+
+  - it: V09 reports valkey.enabled without a password Secret
+    set:
+      valkey.auth.usersExistingSecret: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'valkey\.enabled is true without a password Secret \(valkey\.auth\.usersExistingSecret\)\.'
+
+  - it: V09 reports Valkey authentication switched off
+    set:
+      valkey.auth.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: 'Valkey authentication is switched off \(valkey\.auth\.enabled\)\.'
+
+  - it: V10 reports processor values outside split-all
+    set:
+      parts.processor.replicaCount: 3
+      parts.processor.podLabels:
+        a: b
+    asserts:
+      - failedTemplate:
+          errorPattern: 'parts\.processor sets replicaCount, podLabels but topology "all-in-one" has no such part \(parts\.processor\)\.'
+
+  - it: V10 reports all values outside all-in-one
+    set:
+      topology: split-ingest
+      parts.all.resources:
+        limits:
+          cpu: "1"
+    asserts:
+      - failedTemplate:
+          errorPattern: 'parts\.all sets resources but topology "split-ingest" has no such part'
+
+  - it: V10 reports ingest and app values in all-in-one
+    set:
+      parts.ingest.extraEnv:
+        - name: A
+          value: b
+      parts.app.annotations:
+        a: b
+    asserts:
+      - failedTemplate:
+          errorPattern: 'parts\.ingest sets extraEnv but topology "all-in-one"'
+      - failedTemplate:
+          errorPattern: 'parts\.app sets annotations but topology "all-in-one"'
+
+  - it: V11 reports both minAvailable and maxUnavailable
+    set:
+      podDisruptionBudget.minAvailable: 1
+    asserts:
+      - failedTemplate:
+          errorPattern: 'Both minAvailable \(1\) and maxUnavailable \(1\) are set \(podDisruptionBudget\)\.'
+
+  - it: V12 reports native TLS without a certificate Secret
+    set:
+      tls.mode: native
+    asserts:
+      - failedTemplate:
+          errorPattern: 'tls\.mode is native without a certificate Secret \(tls\.existingSecret\)\.'
+
+  - it: V13 reports httpsRedirect without native TLS
+    set:
+      tls.mode: proxy
+      tls.httpsRedirect: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'tls\.httpsRedirect is true but tls\.mode is "proxy" \(tls\.httpsRedirect\)\.'
+
+  - it: V14 reports duplicate ingress names
+    set:
+      ingresses:
+        - name: users
+        - name: users
+    asserts:
+      - failedTemplate:
+          errorPattern: 'ingresses name "users" is used twice \(ingresses\[1\]\.name\)\.'
+
+  - it: V14 reports duplicate httpRoute names
+    set:
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+        - name: users
+          parentRefs:
+            - name: gw
+    asserts:
+      - failedTemplate:
+          errorPattern: 'httpRoutes name "users" is used twice \(httpRoutes\[1\]\.name\)\.'
+
+  - it: V14 accepts unique names in both lists
+    set:
+      ingresses:
+        - name: users
+        - name: senders
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: V16 fails when a simulated cluster lacks the Gateway API
+    capabilities:
+      apiVersions:
+        - apps/v1/Deployment
+    set:
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+    asserts:
+      - failedTemplate:
+          errorPattern: 'httpRoutes are set but the cluster has no gateway\.networking\.k8s\.io/v1 API \(httpRoutes\)\.'
+
+  - it: V16 passes when the simulated cluster has the Gateway API
+    capabilities:
+      apiVersions:
+        - apps/v1/Deployment
+        - gateway.networking.k8s.io/v1
+    set:
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: V16 is skipped without cluster information
+    set:
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: V17 reports an OIDC issuer without a client Secret
+    set:
+      auth.oidc.issuer: https://issuer.example
+      ingresses:
+        - name: users
+          hosts:
+            - host: opsie.example
+    asserts:
+      - failedTemplate:
+          errorPattern: 'auth\.oidc\.issuer is set without a client Secret \(auth\.oidc\.existingSecret\)\.'
+
+  - it: V18 reports an OIDC issuer without a redirect URL or host
+    set:
+      auth.oidc.issuer: https://issuer.example
+      auth.oidc.existingSecret: opsie-oidc
+    asserts:
+      - failedTemplate:
+          errorPattern: 'The OIDC redirect URL is not known \(auth\.oidc\.redirectUrl\)\.'
+
+  - it: V19 renders no error for hook mode with an existing service account and no create
+    set:
+      database.migrate.mode: hook
+      database.migrate.serviceAccount.create: false
+      database.migrate.serviceAccount.name: existing
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: V19 renders no error for postgres in every migration mode
+    set:
+      database.type: postgres
+      database.migrate.mode: initContainer
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: V20 reports an init container part the topology does not have
+    set:
+      database.migrate.initContainerParts:
+        - nonexistent
+    asserts:
+      - failedTemplate:
+          errorPattern: 'database\.migrate\.initContainerParts names "nonexistent", which topology "all-in-one" does not have'
+
+  - it: V21 reports enabled spread without constraints
+    set:
+      topologySpread.constraints: []
+    asserts:
+      - failedTemplate:
+          errorPattern: 'topologySpread\.enabled is true but no constraints exist for all \(topologySpread\.constraints\)\.'
+
+  - it: V21 accepts a part-specific list when the shared list is empty
+    set:
+      topologySpread.constraints: []
+      parts.all.topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: reports several problems in one numbered error
+    set:
+      valkey.enabled: false
+      database.existingSecret: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: '(?s)1\. No database Secret is named .*\n  2\. No Valkey source is selected'
+
+  - it: numbers a single problem
+    set:
+      database.existingSecret: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: '^\s*1\. No database Secret'
+      - failedTemplate:
+          errorPattern: '(?s)^[^\n]*$'

@@ -1,0 +1,62 @@
+suite: configmap
+templates:
+  - templates/configmap.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: carries the non-secret variables for the Valkey sub-chart
+    asserts:
+      - equal:
+          path: metadata.name
+          value: opsie-config
+      - equal:
+          path: data
+          value:
+            DB_TYPE: mssql
+            USE_REDIS: "true"
+            REDIS_ADDR: RELEASE-NAME-valkey:6379
+            REDIS_DB: "0"
+
+  - it: uses the external Redis address and database
+    set:
+      valkey.enabled: false
+      redis.enabled: true
+      redis.addr: redis.example:6380
+      redis.db: 3
+      redis.existingSecret: opsie-redis
+    asserts:
+      - equal:
+          path: data.REDIS_ADDR
+          value: redis.example:6380
+      - equal:
+          path: data.REDIS_DB
+          value: "3"
+
+  - it: sets the alert settings only when given
+    set:
+      alerts.reopenWindow: 10m
+      alerts.zombieThreshold: 48h
+    asserts:
+      - equal:
+          path: data.ALERT_REOPEN_WINDOW
+          value: 10m
+      - equal:
+          path: data.ALERT_ZOMBIE_THRESHOLD
+          value: 48h
+
+  - it: leaves the alert settings out by default and never holds the connection string
+    asserts:
+      - notExists:
+          path: data.ALERT_REOPEN_WINDOW
+      - notExists:
+          path: data.ALERT_ZOMBIE_THRESHOLD
+      - notExists:
+          path: data.DB_CONNECTION_STRING
+
+  - it: honours postgres as database type
+    set:
+      database.type: postgres
+    asserts:
+      - equal:
+          path: data.DB_TYPE
+          value: postgres

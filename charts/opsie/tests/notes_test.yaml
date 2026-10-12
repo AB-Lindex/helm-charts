@@ -1,0 +1,51 @@
+suite: notes
+templates:
+  - NOTES.txt
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: warns about the placeholder image tag
+    set:
+      image.tag: v0
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: "image\\.tag is the placeholder v0"
+
+  - it: does not warn with a real tag
+    asserts:
+      - notMatchRegex:
+          path: raw
+          pattern: "placeholder"
+
+  - it: lists a Service per part and the port-forward hint without routing
+    set:
+      topology: split-all
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: "opsie-ingest"
+      - matchRegex:
+          path: raw
+          pattern: "opsie-processor"
+      - matchRegex:
+          path: raw
+          pattern: "port-forward svc/opsie-app 8080:80"
+
+  - it: omits the port-forward hint when routing exists
+    set:
+      ingresses:
+        - name: users
+    asserts:
+      - notMatchRegex:
+          path: raw
+          pattern: "port-forward"
+
+  - it: warns about /metrics and secret restarts
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: "Do not expose /metrics"
+      - matchRegex:
+          path: raw
+          pattern: "does not restart the pods"

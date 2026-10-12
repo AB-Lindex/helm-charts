@@ -6,7 +6,7 @@ set -u
 
 CHART="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FIXTURE="$CHART/ci/all-in-one-values.yaml"
-KUBE_VERSION="1.35.0"
+KUBE_VERSION="1.32.0"
 FAILURES=0
 CASES=0
 

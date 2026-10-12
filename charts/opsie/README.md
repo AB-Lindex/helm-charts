@@ -22,7 +22,7 @@ Deploys [Opsie](https://github.com/AB-Lindex/opsie) to Kubernetes: one image, th
 
 ## Prerequisites
 
-- Helm 3 and Kubernetes 1.35 or newer.
+- Helm 3 and Kubernetes 1.32 or newer.
 - An external database with transaction support, MSSQL (primary) or PostgreSQL. The chart never creates a database, and the `memory` provider, `DEVMODE` and `ENABLE_MOCK_DATA` are never offered.
 - A Valkey or Redis service with pub/sub: either the bundled `valkey` sub-chart or an external one. Microsoft Garnet is not supported because it lacks pub/sub.
 - The Gateway API CRDs only if `httpRoutes` is used, and the Prometheus Operator CRDs only if `metrics.serviceMonitor.enabled` is used. The chart installs neither.

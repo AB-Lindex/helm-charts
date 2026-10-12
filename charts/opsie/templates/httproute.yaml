@@ -27,6 +27,15 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   rules:
+    - matches:
+        - {{ toYaml $match | nindent 10 | trim }}
+      {{- with $entry.filters }}
+      filters:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      backendRefs:
+        - name: {{ include "opsie.partFullname" (dict "root" $root "part" $uiPart) }}
+          port: 80
     {{- if $split }}
     - matches:
         - {{ toYaml $eventsMatch | nindent 10 | trim }}
@@ -38,13 +47,4 @@ spec:
         - name: {{ include "opsie.partFullname" (dict "root" $root "part" "ingest") }}
           port: 80
     {{- end }}
-    - matches:
-        - {{ toYaml $match | nindent 10 | trim }}
-      {{- with $entry.filters }}
-      filters:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      backendRefs:
-        - name: {{ include "opsie.partFullname" (dict "root" $root "part" $uiPart) }}
-          port: 80
 {{- end }}

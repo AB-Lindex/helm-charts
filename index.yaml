@@ -12,4 +12,26 @@ entries:
     urls:
     - https://github.com/AB-Lindex/helm-charts/releases/download/etcd-backup-0.1.0/etcd-backup-0.1.0.tgz
     version: 0.1.0
-generated: "2024-07-23T14:54:45.066274045Z"
+  opsie:
+  - apiVersion: v2
+    appVersion: v0
+    created: "2026-10-12T07:07:06.796639551Z"
+    dependencies:
+    - condition: valkey.enabled
+      name: valkey
+      repository: https://valkey.io/valkey-helm/
+      version: 0.12.0
+    description: A Helm chart for Opsie, the on-call and alert management platform
+      (external MSSQL or PostgreSQL, Valkey required)
+    digest: f092315c3d92fc5363c1ed57ca371051fa8a01ff6c1fc165fe05ebee1b16707d
+    home: https://github.com/AB-Lindex/helm-charts
+    kubeVersion: '>=1.35.0-0'
+    name: opsie
+    sources:
+    - https://github.com/AB-Lindex/helm-charts
+    - https://github.com/AB-Lindex/opsie
+    type: application
+    urls:
+    - https://github.com/AB-Lindex/helm-charts/releases/download/opsie-0.1.0/opsie-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-10-12T07:07:06.796650311Z"

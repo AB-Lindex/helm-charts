@@ -104,8 +104,12 @@ serviceAccount:
   create: true
   # -- Empty means the base name (opsie).
   name: ""
+  # -- Extra labels on the ServiceAccount, for example azure.workload.identity/use. They win over the chart labels.
+  labels: {}
   # -- Annotations on the ServiceAccount, for example for workload identity.
   annotations: {}
+  # -- automountServiceAccountToken of the ServiceAccount. null leaves it unset (Kubernetes default: true); false is honoured.
+  automountServiceAccountToken: null
 
 database:
   # -- mssql | postgres. The memory provider is never offered.
@@ -142,6 +146,8 @@ database:
       create: false
       # -- Existing account when create is false; empty means the namespace default. <base>-migrate when create is true.
       name: ""
+      # -- Extra labels on the migration service account. They win over the chart labels.
+      labels: {}
       # -- Annotations on the migration service account.
       annotations: {}
 
@@ -215,6 +221,8 @@ themes:
   existingConfigMap: ""
 
 metrics:
+  # -- Dedicated plain-HTTP /metrics port (METRICS_PORT). 0 serves /metrics on the HTTP port.
+  port: 0
   serviceMonitor:
     # -- Create a Prometheus Operator ServiceMonitor that scrapes every part.
     enabled: false

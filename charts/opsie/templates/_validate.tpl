@@ -152,6 +152,16 @@ Included from templates/configmap.yaml, which always renders.
 {{- end }}
 {{- end }}
 
+{{- /* V22: the application rejects a collision; range is checked by the schema */}}
+{{- if $v.metrics.port }}
+{{- if eq (int $v.metrics.port) 8080 }}
+{{- $errs = append $errs "metrics.port equals the HTTP port 8080 (metrics.port). Use another port, or 0 to serve /metrics on the HTTP port." }}
+{{- end }}
+{{- if and (eq $v.tls.mode "native") (eq (int $v.metrics.port) 8443) }}
+{{- $errs = append $errs "metrics.port equals the HTTPS port 8443 (metrics.port). Use another port, or 0 to serve /metrics on the HTTP port." }}
+{{- end }}
+{{- end }}
+
 {{- if $errs }}
 {{- $lines := list }}
 {{- range $i, $e := $errs }}

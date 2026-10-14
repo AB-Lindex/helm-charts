@@ -20,6 +20,12 @@ spec:
       targetPort: https
       protocol: TCP
     {{- end }}
+    {{- if $root.Values.metrics.port }}
+    - name: metrics
+      port: {{ $root.Values.metrics.port | int }}
+      targetPort: metrics
+      protocol: TCP
+    {{- end }}
   selector:
     {{- include "opsie.selectorLabels" (dict "root" $root "part" $part) | nindent 4 }}
 {{- end }}

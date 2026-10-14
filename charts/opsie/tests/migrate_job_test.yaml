@@ -119,11 +119,17 @@ tests:
   - it: a service account of its own is rendered as a hook and used by the Job
     set:
       database.migrate.serviceAccount.create: true
+      database.migrate.serviceAccount.labels:
+        azure.workload.identity/use: "true"
       database.migrate.serviceAccount.annotations:
         azure.workload.identity/client-id: abc
     asserts:
       - hasDocuments:
           count: 2
+      - equal:
+          path: metadata.labels["azure.workload.identity/use"]
+          value: "true"
+        documentIndex: 0
       - isKind:
           of: ServiceAccount
         documentIndex: 0

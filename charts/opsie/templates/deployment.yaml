@@ -66,6 +66,11 @@ spec:
               containerPort: 8443
               protocol: TCP
             {{- end }}
+            {{- if $root.Values.metrics.port }}
+            - name: metrics
+              containerPort: {{ $root.Values.metrics.port | int }}
+              protocol: TCP
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

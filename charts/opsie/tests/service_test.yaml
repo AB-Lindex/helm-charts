@@ -25,6 +25,20 @@ tests:
           path: spec.selector["app.kubernetes.io/component"]
           value: all
 
+  - it: metrics.port adds a metrics Service port to every part
+    set:
+      topology: split-all
+      metrics.port: 9090
+    asserts:
+      - contains:
+          path: spec.ports
+          content:
+            name: metrics
+            port: 9090
+            targetPort: metrics
+            protocol: TCP
+        documentIndex: 1
+
   - it: split-all renders a Service for every part including processor
     set:
       topology: split-all

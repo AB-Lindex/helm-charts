@@ -245,6 +245,9 @@ DB_TYPE: {{ .Values.database.type | quote }}
 USE_REDIS: "true"
 REDIS_ADDR: {{ include "opsie.redisAddr" . | quote }}
 REDIS_DB: {{ .Values.redis.db | default 0 | int | toString | quote }}
+{{- if .Values.metrics.port }}
+METRICS_PORT: {{ .Values.metrics.port | int | toString | quote }}
+{{- end }}
 {{- with .Values.alerts.reopenWindow }}
 ALERT_REOPEN_WINDOW: {{ . | quote }}
 {{- end }}

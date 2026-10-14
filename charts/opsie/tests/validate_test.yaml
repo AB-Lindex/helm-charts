@@ -287,6 +287,36 @@ tests:
       - isKind:
           of: ConfigMap
 
+  - it: V22 reports metrics.port equal to the HTTP port
+    set:
+      metrics.port: 8080
+    asserts:
+      - failedTemplate:
+          errorPattern: 'metrics\.port equals the HTTP port 8080 \(metrics\.port\)\.'
+
+  - it: V22 reports metrics.port equal to the HTTPS port under native TLS
+    set:
+      metrics.port: 8443
+      tls.mode: native
+      tls.existingSecret: opsie-tls
+    asserts:
+      - failedTemplate:
+          errorPattern: 'metrics\.port equals the HTTPS port 8443 \(metrics\.port\)\.'
+
+  - it: V22 accepts 8443 as metrics.port without native TLS
+    set:
+      metrics.port: 8443
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: V22 rejects an out-of-range metrics.port through the schema
+    set:
+      metrics.port: 70000
+    asserts:
+      - failedTemplate:
+          errorPattern: 'metrics'
+
   - it: reports several problems in one numbered error
     set:
       valkey.enabled: false

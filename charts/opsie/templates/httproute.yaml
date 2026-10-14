@@ -34,7 +34,9 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       backendRefs:
-        - name: {{ include "opsie.partFullname" (dict "root" $root "part" $uiPart) }}
+        - group: ""
+          kind: Service
+          name: {{ include "opsie.partFullname" (dict "root" $root "part" $uiPart) }}
           port: 80
     {{- if $split }}
     - matches:
@@ -44,7 +46,9 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       backendRefs:
-        - name: {{ include "opsie.partFullname" (dict "root" $root "part" "ingest") }}
+        - group: ""
+          kind: Service
+          name: {{ include "opsie.partFullname" (dict "root" $root "part" "ingest") }}
           port: 80
     {{- end }}
 {{- end }}

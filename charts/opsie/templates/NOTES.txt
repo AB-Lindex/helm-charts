@@ -16,6 +16,12 @@ No ingresses or httpRoutes are configured. To reach the UI:
   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "opsie.partFullname" (dict "root" . "part" (ternary "app" "all" (ne .Values.topology "all-in-one"))) }} 8080:80
 {{- end }}
 
-Do not expose /metrics through catch-all routes: it is served unauthenticated on the HTTP port of every part and is meant to be scraped from inside the cluster.
+{{- if .Values.metrics.port }}
+
+/metrics is served unauthenticated on the dedicated port {{ .Values.metrics.port }} of every part. Ingresses and httpRoutes never route it; scrape it from inside the cluster.
+{{- else }}
+
+Do not expose /metrics through catch-all routes: it is served unauthenticated on the HTTP port of every part and is meant to be scraped from inside the cluster. Set metrics.port to move it to a dedicated port.
+{{- end }}
 
 Changing an existing Secret or ConfigMap that the chart only references does not restart the pods. Restart the Deployments after such a change.

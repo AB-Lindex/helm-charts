@@ -53,6 +53,19 @@ tests:
       - notExists:
           path: data.DB_CONNECTION_STRING
 
+  - it: sets METRICS_PORT only when metrics.port is set
+    asserts:
+      - notExists:
+          path: data.METRICS_PORT
+
+  - it: passes metrics.port as METRICS_PORT
+    set:
+      metrics.port: 9090
+    asserts:
+      - equal:
+          path: data.METRICS_PORT
+          value: "9090"
+
   - it: honours postgres as database type
     set:
       database.type: postgres

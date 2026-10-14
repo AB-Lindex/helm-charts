@@ -108,6 +108,7 @@
     "metrics": {
       "type": "object",
       "properties": {
+        "port": { "type": "integer", "minimum": 0, "maximum": 65535 },
         "serviceMonitor": {
           "type": "object",
           "properties": {

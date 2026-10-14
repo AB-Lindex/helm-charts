@@ -167,11 +167,13 @@ httpRoutes:
 
 `httpRoutes` entries also accept `filters` and `matchHeaders`, applied to every generated rule. The chart never creates a `Gateway` or `GatewayClass`, and does not check that entries are consistent with each other.
 
-Warning: every part serves `/metrics` unauthenticated on the HTTP port. A catch-all route forwards it to the outside, and neither the Ingress nor the HTTPRoute API can deny a path portably. Block it in your Ingress controller or Gateway.
+Warning: with `metrics.port` unset, every part serves `/metrics` unauthenticated on the HTTP port. A catch-all route forwards it to the outside, and neither the Ingress nor the HTTPRoute API can deny a path portably. Block it in your Ingress controller or Gateway, or set `metrics.port` (see [Metrics](#metrics)).
 
 ## Metrics
 
-Every part is designed to serve `GET /metrics` on the plain HTTP port. The endpoint is an application prerequisite that Opsie does not have yet. `metrics.serviceMonitor.enabled: true` renders one `ServiceMonitor` that selects every Service of the release and scrapes over plain HTTP, also with native TLS. The component label identifies the part on each target. Use `metrics.serviceMonitor.labels` to match your Prometheus `serviceMonitorSelector`.
+Every part serves `GET /metrics`. By default it is on the plain HTTP port. `metrics.port` sets `METRICS_PORT` and moves it to a dedicated plain-HTTP listener on that port, in every part: the chart adds a named `metrics` container port and Service port, and the `ServiceMonitor` scrapes that port. `/metrics` then answers `404` on the HTTP and HTTPS ports, so it is never reachable through `ingresses` or `httpRoutes`, and `tls.httpsRedirect` does not affect scrapes. The port must differ from 8080, and from 8443 with `tls.mode: native`. Probes stay on the HTTP port.
+
+`metrics.serviceMonitor.enabled: true` renders one `ServiceMonitor` that selects every Service of the release and scrapes over plain HTTP, also with native TLS. The component label identifies the part on each target. Use `metrics.serviceMonitor.labels` to match your Prometheus `serviceMonitorSelector`.
 
 ## Authentication
 
@@ -197,6 +199,8 @@ Opsie connects to MSSQL with SQL authentication only; passwordless access needs 
 | --- | --- |
 | A pod label | `podLabels`, `parts.<part>.podLabels`, `database.migrate.podLabels` |
 | A service account annotation | `serviceAccount.annotations`, `database.migrate.serviceAccount.annotations` |
+| A service account label | `serviceAccount.labels`, `database.migrate.serviceAccount.labels` |
+| Disable token automount on the service account | `serviceAccount.automountServiceAccountToken: false` |
 | A predictable service account name | `serviceAccount.name` (default `opsie`); the migration account is `<base>-migrate` |
 | A migration service account that exists when the hook runs | `database.migrate.serviceAccount.create` |
 | A passwordless connection string | `database.existingSecret`; the chart treats the string as opaque |
@@ -228,7 +232,7 @@ Every value is documented in [values.yaml](values.yaml). The top-level keys are:
 | `auth`, `themes` | JWT, OIDC, session cache, admin emails and themes |
 | `tls` | TLS mode |
 | `alerts` | Alert tuning |
-| `metrics` | ServiceMonitor |
+| `metrics` | Dedicated metrics port, ServiceMonitor |
 | `podLabels`, `podAnnotations`, `extraEnv`, `extraEnvFrom`, `resources`, `podSecurityContext`, `securityContext` | Settings for every part |
 | `ingresses`, `httpRoutes` | External routing |
 | `extraObjects` | Extra manifests |

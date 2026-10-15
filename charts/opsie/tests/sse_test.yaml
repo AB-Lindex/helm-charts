@@ -1,0 +1,238 @@
+suite: sse stream ingress
+templates:
+  - templates/ingress-stream.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: renders nothing without ingresses entries
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a stream Ingress per entry with class, tls, path and annotations
+    set:
+      ingresses:
+        - name: users
+          className: nginx
+          annotations:
+            example.com/keep: "yes"
+          hosts:
+            - host: opsie.example
+          tls:
+            - secretName: opsie-tls
+              hosts:
+                - opsie.example
+        - name: senders
+          className: internal
+          hosts:
+            - host: events.example
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: opsie-users-stream
+        documentIndex: 0
+      - equal:
+          path: spec.ingressClassName
+          value: nginx
+        documentIndex: 0
+      - equal:
+          path: spec.tls[0].secretName
+          value: opsie-tls
+        documentIndex: 0
+      - equal:
+          path: spec.rules
+          value:
+            - http:
+                paths:
+                  - path: /api/stream
+                    pathType: Prefix
+                    backend:
+                      service:
+                        name: opsie
+                        port:
+                          number: 80
+              host: opsie.example
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["nginx.ingress.kubernetes.io/proxy-read-timeout"]
+          value: "3600"
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["nginx.ingress.kubernetes.io/proxy-send-timeout"]
+          value: "3600"
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["nginx.ingress.kubernetes.io/proxy-buffering"]
+          value: "off"
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["example.com/keep"]
+          value: "yes"
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: opsie-senders-stream
+        documentIndex: 1
+      - equal:
+          path: spec.ingressClassName
+          value: internal
+        documentIndex: 1
+
+  - it: the backend is the app Service in split topologies
+    set:
+      topology: split-all
+      ingresses:
+        - name: users
+          hosts:
+            - host: opsie.example
+    asserts:
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.name
+          value: opsie-app
+      - lengthEqual:
+          path: spec.rules[0].http.paths
+          count: 1
+
+  - it: a user annotation in sse.ingress.annotations overrides the default of the same key
+    set:
+      sse.ingress.annotations:
+        nginx.ingress.kubernetes.io/proxy-read-timeout: "7200"
+      ingresses:
+        - name: users
+          annotations:
+            nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+          hosts:
+            - host: opsie.example
+    asserts:
+      - equal:
+          path: metadata.annotations["nginx.ingress.kubernetes.io/proxy-read-timeout"]
+          value: "7200"
+
+  - it: the stream annotations win over an entry annotation of the same key
+    set:
+      ingresses:
+        - name: users
+          annotations:
+            nginx.ingress.kubernetes.io/proxy-buffering: "on"
+          hosts:
+            - host: opsie.example
+    asserts:
+      - equal:
+          path: metadata.annotations["nginx.ingress.kubernetes.io/proxy-buffering"]
+          value: "off"
+
+  - it: renders nothing when sse.enabled is false
+    set:
+      sse.enabled: false
+      ingresses:
+        - name: users
+          hosts:
+            - host: opsie.example
+    asserts:
+      - hasDocuments:
+          count: 0
+
+---
+suite: sse stream httproute
+templates:
+  - templates/httproute-stream.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: renders nothing without httpRoutes entries
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a stream HTTPRoute per entry with the same parentRefs and a 3600s request timeout
+    set:
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+              namespace: gateway-system
+          hostnames:
+            - opsie.example
+          matchHeaders:
+            - name: X-Env
+              value: prod
+          filters:
+            - type: RequestHeaderModifier
+              requestHeaderModifier:
+                set:
+                  - name: X-Test
+                    value: "1"
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: opsie-users-stream
+      - equal:
+          path: spec.parentRefs
+          value:
+            - name: gw
+              namespace: gateway-system
+      - equal:
+          path: spec.hostnames
+          value:
+            - opsie.example
+      - equal:
+          path: spec.rules
+          value:
+            - matches:
+                - path:
+                    type: PathPrefix
+                    value: /api/stream
+                  headers:
+                    - name: X-Env
+                      value: prod
+              filters:
+                - type: RequestHeaderModifier
+                  requestHeaderModifier:
+                    set:
+                      - name: X-Test
+                        value: "1"
+              timeouts:
+                request: 3600s
+              backendRefs:
+                - group: ""
+                  kind: Service
+                  name: opsie
+                  port: 80
+
+  - it: the backend is the app Service in split topologies
+    set:
+      topology: split-ingest
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+    asserts:
+      - equal:
+          path: spec.rules[0].backendRefs[0].name
+          value: opsie-app
+
+  - it: an empty timeouts map renders no timeouts key
+    set:
+      sse.httpRoute.timeouts: null
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+    asserts:
+      - notExists:
+          path: spec.rules[0].timeouts
+
+  - it: renders nothing when sse.enabled is false
+    set:
+      sse.enabled: false
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+    asserts:
+      - hasDocuments:
+          count: 0

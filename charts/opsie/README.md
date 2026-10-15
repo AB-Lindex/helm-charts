@@ -13,6 +13,7 @@ Deploys [Opsie](https://github.com/AB-Lindex/opsie) to Kubernetes: one image, th
 - [Database migration](#database-migration)
 - [TLS](#tls)
 - [Routing](#routing)
+- [Server-Sent Events stream](#server-sent-events-stream)
 - [Metrics](#metrics)
 - [Authentication](#authentication)
 - [Operations](#operations)
@@ -169,6 +170,23 @@ httpRoutes:
 
 Warning: with `metrics.port` unset, every part serves `/metrics` unauthenticated on the HTTP port. A catch-all route forwards it to the outside, and neither the Ingress nor the HTTPRoute API can deny a path portably. Block it in your Ingress controller or Gateway, or set `metrics.port` (see [Metrics](#metrics)).
 
+## Server-Sent Events stream
+
+The UI keeps one long-lived Server-Sent Events request per visible browser tab open to `GET /api/stream`. The application sends a heartbeat every 15 to 25 seconds and closes each stream cleanly after 24 to 36 minutes (a 30 minute lifetime with 20% jitter); the browser reconnects by itself. The stream is served by the parts that run `api` (`all` and `app`).
+
+`sse.enabled` (default `true`) renders, for every `ingresses` and `httpRoutes` entry, a second resource named `<base>-<name>-stream` that matches only the path `/api/stream` and sends it to the same part as the main route. The main Ingress and HTTPRoute stay unchanged, so the stream settings never leak onto the other paths:
+
+- The stream `Ingress` copies `className` and `tls` from its entry and takes the entry's `annotations` merged with `sse.ingress.annotations`; the latter win. The defaults (`proxy-read-timeout`, `proxy-send-timeout`, `proxy-buffering: "off"`) target ingress-nginx. For another controller, replace them with that controller's read-timeout and no-buffering settings.
+- The stream `HTTPRoute` copies `parentRefs`, `hostnames`, `filters` and `matchHeaders` and sets `timeouts` from `sse.httpRoute.timeouts` (Gateway API 1.1 or newer; an empty map renders no `timeouts`). The Gateway implementation must also not buffer responses.
+
+Requirements on whatever sits in front of Opsie:
+
+- **HTTP/2 must be served to browsers.** With HTTP/1.1 a browser allows about 6 connections per origin and every open tab holds one for the stream, which starves normal requests. Check the protocol column in the browser's network tools (`h2`) or run `curl -sI --http2 -o /dev/null -w '%{http_version}\n' https://<host>/`.
+- No response buffering: the application also sends `X-Accel-Buffering: no`, which ingress-nginx honours.
+- A read or request timeout above the heartbeat interval of 25 seconds, and any absolute request limit above the 36 minute maximum stream lifetime. The defaults of 3600 seconds satisfy both.
+
+`sse.maxConnectionsPerUser` (`SSE_MAX_CONNECTIONS_PER_USER`, application default 10) and `sse.maxConnections` (`SSE_MAX_CONNECTIONS`, application default 2000) are per pod. Above the per-user cap the oldest stream of that user is closed and the new one accepted; above the pod cap new requests receive `429` with `Retry-After`. `sse.enabled: false` sets `SSE_DISABLED=true`: the endpoint answers `404`, no stream routing is rendered and the UI hides the connection indicator.
+
 ## Metrics
 
 Every part serves `GET /metrics`. By default it is on the plain HTTP port. `metrics.port` sets `METRICS_PORT` and moves it to a dedicated plain-HTTP listener on that port, in every part: the chart adds a named `metrics` container port and Service port, and the `ServiceMonitor` scrapes that port. `/metrics` then answers `404` on the HTTP and HTTPS ports, so it is never reachable through `ingresses` or `httpRoutes`, and `tls.httpsRedirect` does not affect scrapes. The port must differ from 8080, and from 8443 with `tls.mode: native`. Probes stay on the HTTP port.
@@ -233,6 +251,7 @@ Every value is documented in [values.yaml](values.yaml). The top-level keys are:
 | `tls` | TLS mode |
 | `alerts` | Alert tuning |
 | `metrics` | Dedicated metrics port, ServiceMonitor |
+| `sse` | Server-Sent Events stream: caps, kill switch and stream routing |
 | `podLabels`, `podAnnotations`, `extraEnv`, `extraEnvFrom`, `resources`, `podSecurityContext`, `securityContext` | Settings for every part |
 | `ingresses`, `httpRoutes` | External routing |
 | `extraObjects` | Extra manifests |

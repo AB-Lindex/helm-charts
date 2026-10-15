@@ -30,6 +30,10 @@ metrics:
   serviceMonitor:
     enabled: true
 
+sse:
+  maxConnectionsPerUser: 5
+  maxConnections: 500
+
 ingresses:
   - name: users
     className: nginx

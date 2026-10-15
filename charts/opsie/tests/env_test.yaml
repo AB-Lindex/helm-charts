@@ -282,3 +282,99 @@ tests:
           path: spec.template.spec.containers[0].envFrom[1].configMapRef.name
           value: more
         documentIndex: 2
+
+  - it: no SSE variables by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SSE_DISABLED")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SSE_MAX_CONNECTIONS")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SSE_MAX_CONNECTIONS_PER_USER")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+
+  - it: SSE caps render for app only
+    set:
+      sse.maxConnectionsPerUser: 5
+      sse.maxConnections: 500
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SSE_MAX_CONNECTIONS_PER_USER
+            value: "5"
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SSE_MAX_CONNECTIONS
+            value: "500"
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SSE_MAX_CONNECTIONS")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SSE_MAX_CONNECTIONS_PER_USER")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor
+
+  - it: SSE caps render for the all part in all-in-one
+    set:
+      topology: all-in-one
+      sse.maxConnectionsPerUser: 5
+      sse.maxConnections: 500
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SSE_MAX_CONNECTIONS_PER_USER
+            value: "5"
+        documentSelector:
+          path: metadata.name
+          value: opsie
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SSE_MAX_CONNECTIONS
+            value: "500"
+        documentSelector:
+          path: metadata.name
+          value: opsie
+
+  - it: sse.enabled false sets SSE_DISABLED on app only
+    set:
+      sse.enabled: false
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SSE_DISABLED
+            value: "true"
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SSE_DISABLED")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SSE_DISABLED")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor

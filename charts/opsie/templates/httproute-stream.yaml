@@ -1,0 +1,45 @@
+{{- $root := . }}
+{{- $split := ne .Values.topology "all-in-one" }}
+{{- $uiPart := ternary "app" "all" $split }}
+{{- if .Values.sse.enabled }}
+{{- range $entry := .Values.httpRoutes }}
+{{- $match := dict "path" (dict "type" "PathPrefix" "value" "/api/stream") }}
+{{- with $entry.matchHeaders }}
+{{- $_ := set $match "headers" . }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" $root "suffix" (printf "%s-stream" $entry.name)) }}
+  labels:
+    {{- include "opsie.labels" $root | nindent 4 }}
+  {{- with $entry.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    {{- toYaml $entry.parentRefs | nindent 4 }}
+  {{- with $entry.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - matches:
+        - {{ toYaml $match | nindent 10 | trim }}
+      {{- with $entry.filters }}
+      filters:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.sse.httpRoute.timeouts }}
+      timeouts:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ include "opsie.partFullname" (dict "root" $root "part" $uiPart) }}
+          port: 80
+{{- end }}
+{{- end }}

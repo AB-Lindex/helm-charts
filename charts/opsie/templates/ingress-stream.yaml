@@ -1,0 +1,42 @@
+{{- $root := . }}
+{{- $split := ne .Values.topology "all-in-one" }}
+{{- $uiPart := ternary "app" "all" $split }}
+{{- if .Values.sse.enabled }}
+{{- range $entry := .Values.ingresses }}
+{{- $annotations := mergeOverwrite (deepCopy ($entry.annotations | default dict)) (deepCopy $root.Values.sse.ingress.annotations) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" $root "suffix" (printf "%s-stream" $entry.name)) }}
+  labels:
+    {{- include "opsie.labels" $root | nindent 4 }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $entry.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with $entry.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range $host := ($entry.hosts | default (list dict)) }}
+    - http:
+        paths:
+          - path: /api/stream
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "opsie.partFullname" (dict "root" $root "part" $uiPart) }}
+                port:
+                  number: 80
+      {{- with $host.host }}
+      host: {{ . | quote }}
+      {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}

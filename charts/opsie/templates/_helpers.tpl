@@ -327,6 +327,18 @@ Input: dict "root" . "part" "app".
 - name: SESSION_CACHE_TTL
   value: {{ $v.auth.sessionCacheTtl | quote }}
 {{- end }}
+{{- if not $v.sse.enabled }}
+- name: SSE_DISABLED
+  value: "true"
+{{- end }}
+{{- with $v.sse.maxConnectionsPerUser }}
+- name: SSE_MAX_CONNECTIONS_PER_USER
+  value: {{ . | toString | quote }}
+{{- end }}
+{{- with $v.sse.maxConnections }}
+- name: SSE_MAX_CONNECTIONS
+  value: {{ . | toString | quote }}
+{{- end }}
 {{- if $v.themes.existingConfigMap }}
 - name: THEMES_PATH
   value: /app/themes/custom

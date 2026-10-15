@@ -104,6 +104,13 @@ expect_fail "schema-httproute-without-parentrefs" "parentRefs" -f "$FIXTURE" --s
 expect_ok "schema-pdb-enabled-true" -f "$FIXTURE" --set podDisruptionBudget.enabled=true
 expect_ok "schema-pdb-enabled-false" -f "$FIXTURE" --set podDisruptionBudget.enabled=false
 expect_ok "schema-valkey-passthrough" -f "$FIXTURE" --set valkey.dataStorage.enabled=true
+expect_ok "sse-caps-valid" -f "$FIXTURE" --set sse.maxConnectionsPerUser=5 --set sse.maxConnections=500
+expect_ok "sse-disabled-valid" -f "$FIXTURE" --set sse.enabled=false
+expect_fail "sse-enabled-maybe" "sse/enabled" -f "$FIXTURE" --set sse.enabled=maybe
+expect_fail "sse-max-connections-zero" "sse/maxConnections" -f "$FIXTURE" --set sse.maxConnections=0
+expect_fail "sse-max-connections-per-user-negative" "sse/maxConnectionsPerUser" -f "$FIXTURE" --set sse.maxConnectionsPerUser=-1
+expect_fail "sse-annotation-not-a-string" "sse/ingress/annotations/x" -f "$FIXTURE" --set sse.ingress.annotations.x=5
+expect_fail "sse-unknown-key" "bogus" -f "$FIXTURE" --set sse.bogus=1
 
 # --- collected validation messages as seen from the command line
 expect_fail "validate-header-singular" "opsie: 1 configuration problem:" -f "$FIXTURE" --set database.existingSecret=

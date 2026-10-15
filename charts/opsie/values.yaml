@@ -233,6 +233,24 @@ metrics:
     # -- Labels for the Prometheus instance's serviceMonitorSelector.
     labels: {}
 
+sse:
+  # -- Serve the Server-Sent Events stream GET /api/stream, with a dedicated Ingress or HTTPRoute per routing entry. false sets SSE_DISABLED=true and renders no stream routing.
+  enabled: true
+  # -- SSE_MAX_CONNECTIONS_PER_USER: open streams per user and pod; the oldest is evicted above it. Empty leaves the application default.
+  maxConnectionsPerUser: ""
+  # -- SSE_MAX_CONNECTIONS: open streams per pod; new requests get 429 above it. Empty leaves the application default.
+  maxConnections: ""
+  ingress:
+    # -- Annotations of the dedicated stream Ingress of every ingresses entry; they win over the entry's own annotations. The defaults target ingress-nginx and must be replaced for another controller.
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  httpRoute:
+    # -- Timeouts of the stream rule of every httpRoutes entry (Gateway API 1.1 or newer). An empty map renders none.
+    timeouts:
+      request: 3600s
+
 # -- Labels on the pods of every part.
 podLabels: {}
 # -- Annotations on the pods of every part.

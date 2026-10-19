@@ -1,0 +1,408 @@
+suite: email integration
+templates:
+  - templates/deployment.yaml
+  - templates/configmap.yaml
+  - templates/service.yaml
+  - templates/service-internal.yaml
+  - templates/networkpolicy-email.yaml
+  - templates/servicemonitor.yaml
+  - templates/ingress.yaml
+  - templates/ingress-stream.yaml
+  - templates/httproute.yaml
+  - templates/httproute-stream.yaml
+values:
+  - ../ci/email-values.yaml
+tests:
+  - it: renders the email variables on the all part with secretKeyRef entries of one Secret
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EMAIL_DOMAIN
+            value: mail.example.com
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EMAIL_ROUTES_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-shared
+                key: routes-token
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EMAIL_ROUTES_TOKEN_NEXT
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-shared
+                key: routes-token-next
+                optional: true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EMAIL_ATTACHMENT_API_URL
+            value: http://opsie-email:8082
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EMAIL_ATTACHMENT_API_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-shared
+                key: attachments-secret
+
+  - it: renders no email variable while email is disabled
+    template: templates/deployment.yaml
+    set:
+      email.enabled: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "EMAIL_ROUTES_TOKEN")]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "EMAIL_DOMAIN")]
+
+  - it: keeps every email credential and the Secret name out of the ConfigMap
+    template: templates/configmap.yaml
+    asserts:
+      - equal:
+          path: data.INTERNAL_PORT
+          value: "8090"
+      - notExists:
+          path: data.EMAIL_ROUTES_TOKEN
+      - notExists:
+          path: data.EMAIL_ROUTES_TOKEN_NEXT
+      - notExists:
+          path: data.EMAIL_ATTACHMENT_API_SECRET
+      - notMatchRegex:
+          path: data.INTERNAL_PORT
+          pattern: opsie-email-shared
+
+  - it: renders the internal Service for route sync, selecting the all part
+    template: templates/service-internal.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: opsie-internal
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports
+          value:
+            - name: internal
+              port: 8090
+              targetPort: internal
+              protocol: TCP
+      - equal:
+          path: spec.selector["app.kubernetes.io/component"]
+          value: all
+      - notExists:
+          path: metadata.labels["app.kubernetes.io/name"]
+
+  - it: renders no internal Service while email is disabled
+    template: templates/service-internal.yaml
+    set:
+      email.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders the ingress network policy with both rules and the metrics peers
+    template: templates/networkpolicy-email.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Ingress
+      - equal:
+          path: spec.podSelector.matchLabels["app.kubernetes.io/component"]
+          value: all
+      - equal:
+          path: spec.ingress
+          value:
+            - ports:
+                - port: http
+                  protocol: TCP
+            - from:
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: opsie-email
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: monitoring
+              ports:
+                - port: internal
+                  protocol: TCP
+
+  - it: keeps the https port open under native TLS
+    template: templates/networkpolicy-email.yaml
+    set:
+      tls.mode: native
+      tls.existingSecret: opsie-tls
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports
+          value:
+            - port: http
+              protocol: TCP
+            - port: https
+              protocol: TCP
+
+  - it: selects the opsie-email namespace when a namespaceSelector is given
+    template: templates/networkpolicy-email.yaml
+    set:
+      email.networkPolicy.opsieEmail.namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: mail
+    asserts:
+      - equal:
+          path: spec.ingress[1].from[0]
+          value:
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: opsie-email
+            namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: mail
+
+  - it: renders no network policy when it is switched off
+    template: templates/networkpolicy-email.yaml
+    set:
+      email.networkPolicy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders no egress policy by default
+    template: templates/networkpolicy-email.yaml
+    asserts:
+      - notExists:
+          path: spec.egress
+
+  - it: renders the egress policy on request
+    template: templates/networkpolicy-email.yaml
+    set:
+      email.networkPolicy.egress.enabled: true
+      email.networkPolicy.egress.attachmentsPort: 9082
+    documentSelector:
+      path: metadata.name
+      value: opsie-email-egress
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Egress
+      - equal:
+          path: spec.egress
+          value:
+            - to:
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: opsie-email
+              ports:
+                - port: 9082
+                  protocol: TCP
+
+  - it: scrapes the internal port through the ServiceMonitor
+    template: templates/servicemonitor.yaml
+    asserts:
+      - equal:
+          path: spec.endpoints[0].port
+          value: internal
+
+  - it: keeps the internal Service and port out of every Ingress rule
+    set:
+      ingresses:
+        - name: users
+          hosts:
+            - host: opsie.example
+    asserts:
+      - notExists:
+          path: spec.rules[*].http.paths[?(@.backend.service.name == "opsie-internal")]
+        template: templates/ingress.yaml
+      - notExists:
+          path: spec.rules[*].http.paths[?(@.path == "/api/internal")]
+        template: templates/ingress.yaml
+      - notExists:
+          path: spec.rules[*].http.paths[?(@.backend.service.name == "opsie-internal")]
+        template: templates/ingress-stream.yaml
+
+  - it: keeps the internal Service and port out of every HTTPRoute rule
+    set:
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+    asserts:
+      - notExists:
+          path: spec.rules[*].backendRefs[?(@.name == "opsie-internal")]
+        template: templates/httproute.yaml
+      - notExists:
+          path: spec.rules[*].backendRefs[?(@.name == "opsie-internal")]
+        template: templates/httproute-stream.yaml
+
+---
+suite: email integration in split-all
+templates:
+  - templates/deployment.yaml
+  - templates/service.yaml
+  - templates/service-internal.yaml
+  - templates/networkpolicy-email.yaml
+  - templates/ingress.yaml
+  - templates/httproute.yaml
+values:
+  - ../ci/split-all-email-values.yaml
+tests:
+  - it: renders the email variables on app only
+    template: templates/deployment.yaml
+    documentSelector:
+      path: metadata.name
+      value: opsie-app
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EMAIL_ROUTES_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-shared
+                key: routes-token
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EMAIL_ATTACHMENT_API_URL
+            value: https://opsie-email.mail.svc:8082
+
+  - it: renders no email variable on ingest and processor
+    template: templates/deployment.yaml
+    documentSelector:
+      path: metadata.name
+      value: opsie-ingest
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "EMAIL_DOMAIN")]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "EMAIL_ROUTES_TOKEN")]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "EMAIL_ATTACHMENT_API_SECRET")]
+
+  - it: renders no email variable on the processor part
+    template: templates/deployment.yaml
+    documentSelector:
+      path: metadata.name
+      value: opsie-processor
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "EMAIL_DOMAIN")]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "EMAIL_ROUTES_TOKEN")]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "EMAIL_ATTACHMENT_API_SECRET")]
+
+  - it: uses the custom internal port in the Service, container and policy
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: internal
+            containerPort: 9100
+            protocol: TCP
+        template: templates/deployment.yaml
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - equal:
+          path: spec.ports[0].port
+          value: 9100
+        template: templates/service-internal.yaml
+
+  - it: the internal Service selects the app part
+    template: templates/service-internal.yaml
+    asserts:
+      - equal:
+          path: spec.selector["app.kubernetes.io/component"]
+          value: app
+
+  - it: the network policies select the app part and the egress policy is rendered
+    template: templates/networkpolicy-email.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: spec.podSelector.matchLabels["app.kubernetes.io/component"]
+          value: app
+        documentIndex: 0
+      - equal:
+          path: spec.egress[0].ports[0].port
+          value: 8082
+        documentIndex: 1
+
+  - it: keeps the internal Service out of the Ingress rules of a split topology
+    template: templates/ingress.yaml
+    set:
+      ingresses:
+        - name: users
+          hosts:
+            - host: opsie.example
+    asserts:
+      - notExists:
+          path: spec.rules[*].http.paths[?(@.backend.service.name == "opsie-internal")]
+      - notExists:
+          path: spec.rules[*].http.paths[?(@.path == "/api/internal")]
+
+  - it: keeps the internal Service out of the HTTPRoute rules of a split topology
+    template: templates/httproute.yaml
+    set:
+      httpRoutes:
+        - name: users
+          parentRefs:
+            - name: gw
+    asserts:
+      - notExists:
+          path: spec.rules[*].backendRefs[?(@.name == "opsie-internal")]
+
+---
+suite: email integration in split-ingest
+templates:
+  - templates/deployment.yaml
+  - templates/service-internal.yaml
+values:
+  - ../ci/split-all-email-values.yaml
+set:
+  topology: split-ingest
+tests:
+  - it: renders the email variables on app only
+    template: templates/deployment.yaml
+    documentSelector:
+      path: metadata.name
+      value: opsie-app
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EMAIL_ATTACHMENT_API_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-shared
+                key: attachments-secret
+
+  - it: renders no email variable on ingest
+    template: templates/deployment.yaml
+    documentSelector:
+      path: metadata.name
+      value: opsie-ingest
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "EMAIL_ROUTES_TOKEN")]
+
+  - it: the internal Service selects the app part
+    template: templates/service-internal.yaml
+    asserts:
+      - equal:
+          path: spec.selector["app.kubernetes.io/component"]
+          value: app

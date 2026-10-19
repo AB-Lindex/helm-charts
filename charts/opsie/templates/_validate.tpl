@@ -152,13 +152,30 @@ Included from templates/configmap.yaml, which always renders.
 {{- end }}
 {{- end }}
 
-{{- /* V22: the application rejects a collision; range is checked by the schema */}}
-{{- if $v.metrics.port }}
-{{- if eq (int $v.metrics.port) 8080 }}
-{{- $errs = append $errs "metrics.port equals the HTTP port 8080 (metrics.port). Use another port, or 0 to serve /metrics on the HTTP port." }}
+{{- /* V22: the range of internal.port is checked by the schema */}}
+{{- if hasKey $v.metrics "port" }}
+{{- $errs = append $errs "metrics.port was removed (metrics.port). Use internal.port; /metrics is served on the internal port of every part." }}
 {{- end }}
-{{- if and (eq $v.tls.mode "native") (eq (int $v.metrics.port) 8443) }}
-{{- $errs = append $errs "metrics.port equals the HTTPS port 8443 (metrics.port). Use another port, or 0 to serve /metrics on the HTTP port." }}
+{{- if eq (int $v.internal.port) 8080 }}
+{{- $errs = append $errs "internal.port equals the HTTP port 8080 (internal.port). Use another port." }}
+{{- end }}
+{{- if and (eq $v.tls.mode "native") (eq (int $v.internal.port) 8443) }}
+{{- $errs = append $errs "internal.port equals the HTTPS port 8443 (internal.port). Use another port." }}
+{{- end }}
+
+{{- /* V23 */}}
+{{- if $v.email.enabled }}
+{{- if not $v.email.domain }}
+{{- $errs = append $errs "email.enabled is true without a domain (email.domain). Set it to the domain of the recipient addresses, for example mail.example.com." }}
+{{- end }}
+{{- if not $v.email.existingSecret }}
+{{- $errs = append $errs "email.enabled is true without a Secret (email.existingSecret). Set it to the existing Secret shared with the opsie-email release, with the keys routes-token and attachments-secret." }}
+{{- end }}
+{{- if not $v.email.attachments.url }}
+{{- $errs = append $errs "email.enabled is true without an attachment API URL (email.attachments.url). Set it to the base URL of the opsie-email attachment API, for example http://opsie-email:8082." }}
+{{- end }}
+{{- if and $v.email.networkPolicy.enabled $v.metrics.serviceMonitor.enabled (not $v.email.networkPolicy.metricsPeers) }}
+{{- $errs = append $errs "The ServiceMonitor and the email network policy are both enabled without metrics peers (email.networkPolicy.metricsPeers). The policy would block the scrapes; list the Prometheus pods or namespace, or set email.networkPolicy.enabled=false." }}
 {{- end }}
 {{- end }}
 

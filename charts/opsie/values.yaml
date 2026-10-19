@@ -220,9 +220,11 @@ themes:
   # -- Existing ConfigMap with custom themes, mounted at /app/themes/custom.
   existingConfigMap: ""
 
+internal:
+  # -- INTERNAL_PORT: plain-HTTP listener of every part. It serves /metrics unauthenticated and, with email.enabled, the mail route sync. Never routed by ingresses or httpRoutes; keep it cluster-internal.
+  port: 8090
+
 metrics:
-  # -- Dedicated plain-HTTP /metrics port (METRICS_PORT). 0 serves /metrics on the HTTP port.
-  port: 0
   serviceMonitor:
     # -- Create a Prometheus Operator ServiceMonitor that scrapes every part.
     enabled: false
@@ -232,6 +234,34 @@ metrics:
     path: /metrics
     # -- Labels for the Prometheus instance's serviceMonitorSelector.
     labels: {}
+
+email:
+  # -- Enable the email integration (the opsie-email service delivers mail envelopes). Needs email.domain, email.existingSecret and email.attachments.url.
+  enabled: false
+  # -- EMAIL_DOMAIN: the domain of the recipient addresses alerts+<key>@<domain>.
+  domain: ""
+  # -- One existing Secret shared with the opsie-email release, in the same namespace. Keys: routes-token (required, at least 32 characters), routes-token-next (optional, rotation) and attachments-secret (required, at least 32 characters).
+  existingSecret: ""
+  attachments:
+    # -- EMAIL_ATTACHMENT_API_URL: base URL of the attachment API of opsie-email, for example http://opsie-email:8082.
+    url: ""
+  networkPolicy:
+    # -- Render a NetworkPolicy that limits the internal port to opsie-email and metricsPeers. Needs a CNI that enforces NetworkPolicy; other ports stay open.
+    enabled: true
+    opsieEmail:
+      # -- Pods of opsie-email that may call the route sync.
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: opsie-email
+      # -- Namespace of those pods. An empty selector means the namespace of this release.
+      namespaceSelector: {}
+    # -- Peers (NetworkPolicy "from" entries, for example the Prometheus pods or namespace) that may scrape /metrics. Required when the ServiceMonitor and the policy are both enabled.
+    metricsPeers: []
+    egress:
+      # -- Also render an Egress policy that lets Opsie reach the opsie-email attachment API. An Egress policy isolates all other egress of the pods; combine it with your own egress rules.
+      enabled: false
+      # -- Port of the attachment API of opsie-email.
+      attachmentsPort: 8082
 
 sse:
   # -- Serve the Server-Sent Events stream GET /api/stream, with a dedicated Ingress or HTTPRoute per routing entry. false sets SSE_DISABLED=true and renders no stream routing.
@@ -346,3 +376,12 @@ extraObjects: []
   #   type: Opaque
   #   stringData:
   #     password: CHANGE-ME                # redis.existingSecretKey
+  # - apiVersion: v1
+  #   kind: Secret
+  #   metadata:
+  #     name: opsie-email-shared           # email.existingSecret, also referenced by the opsie-email release
+  #   type: Opaque
+  #   stringData:
+  #     routes-token: CHANGE-ME-at-least-32-characters
+  #     routes-token-next: ""              # optional, rotation
+  #     attachments-secret: CHANGE-ME-at-least-32-characters

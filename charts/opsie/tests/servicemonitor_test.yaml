@@ -9,7 +9,7 @@ tests:
       - hasDocuments:
           count: 0
 
-  - it: renders one ServiceMonitor that scrapes /metrics over http on the http port
+  - it: renders one ServiceMonitor that scrapes /metrics over http on the internal port
     set:
       metrics.serviceMonitor.enabled: true
       metrics.serviceMonitor.interval: 15s
@@ -30,7 +30,7 @@ tests:
       - equal:
           path: spec.endpoints
           value:
-            - port: http
+            - port: internal
               path: /metrics
               interval: 15s
               scheme: http
@@ -39,14 +39,14 @@ tests:
           value:
             - apps
 
-  - it: scrapes the dedicated metrics port when metrics.port is set
+  - it: scrapes the internal port whatever its number
     set:
       metrics.serviceMonitor.enabled: true
-      metrics.port: 9090
+      internal.port: 9100
     asserts:
       - equal:
           path: spec.endpoints[0].port
-          value: metrics
+          value: internal
 
   - it: scrapes with plain http also under native TLS and sets no TLS or auth
     set:
@@ -60,7 +60,7 @@ tests:
           value: http
       - equal:
           path: spec.endpoints[0].port
-          value: http
+          value: internal
       - notExists:
           path: spec.endpoints[0].tlsConfig
       - notExists:

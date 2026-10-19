@@ -1,0 +1,21 @@
+{{- if .Values.email.enabled }}
+{{- /* No app.kubernetes.io/name label: the ServiceMonitor selects on it and would scrape every pod twice. */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" . "suffix" "internal") }}
+  labels:
+    helm.sh/chart: {{ include "opsie.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: internal-api
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: internal
+      port: {{ .Values.internal.port | int }}
+      targetPort: internal
+      protocol: TCP
+  selector:
+    {{- include "opsie.selectorLabels" (dict "root" . "part" (include "opsie.internalPart" .)) | nindent 4 }}
+{{- end }}

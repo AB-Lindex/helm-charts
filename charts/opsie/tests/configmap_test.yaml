@@ -16,6 +16,7 @@ tests:
             USE_REDIS: "true"
             REDIS_ADDR: RELEASE-NAME-valkey:6379
             REDIS_DB: "0"
+            INTERNAL_PORT: "8090"
 
   - it: uses the external Redis address and database
     set:
@@ -53,18 +54,18 @@ tests:
       - notExists:
           path: data.DB_CONNECTION_STRING
 
-  - it: sets METRICS_PORT only when metrics.port is set
+  - it: never sets METRICS_PORT
     asserts:
       - notExists:
           path: data.METRICS_PORT
 
-  - it: passes metrics.port as METRICS_PORT
+  - it: passes internal.port as INTERNAL_PORT
     set:
-      metrics.port: 9090
+      internal.port: 9100
     asserts:
       - equal:
-          path: data.METRICS_PORT
-          value: "9090"
+          path: data.INTERNAL_PORT
+          value: "9100"
 
   - it: honours postgres as database type
     set:

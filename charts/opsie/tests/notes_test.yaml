@@ -41,11 +41,11 @@ tests:
           path: raw
           pattern: "port-forward"
 
-  - it: warns about /metrics and secret restarts
+  - it: explains where /metrics lives and warns about secret restarts
     asserts:
       - matchRegex:
           path: raw
-          pattern: "Do not expose /metrics"
+          pattern: "internal port 8090"
       - matchRegex:
           path: raw
           pattern: "does not restart the pods"

@@ -105,10 +105,50 @@
         "hstsMaxAge": { "type": ["string", "integer"] }
       }
     },
+    "internal": {
+      "type": "object",
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "email": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "domain": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "attachments": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" }
+          }
+        },
+        "networkPolicy": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "opsieEmail": {
+              "type": "object",
+              "properties": {
+                "podSelector": { "type": "object" },
+                "namespaceSelector": { "type": "object" }
+              }
+            },
+            "metricsPeers": { "type": "array" },
+            "egress": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "attachmentsPort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+              }
+            }
+          }
+        }
+      }
+    },
     "metrics": {
       "type": "object",
       "properties": {
-        "port": { "type": "integer", "minimum": 0, "maximum": 65535 },
         "serviceMonitor": {
           "type": "object",
           "properties": {

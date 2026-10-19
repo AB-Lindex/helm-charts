@@ -21,21 +21,25 @@ tests:
               port: 80
               targetPort: http
               protocol: TCP
+            - name: internal
+              port: 8090
+              targetPort: internal
+              protocol: TCP
       - equal:
           path: spec.selector["app.kubernetes.io/component"]
           value: all
 
-  - it: metrics.port adds a metrics Service port to every part
+  - it: internal.port adds an internal Service port to every part
     set:
       topology: split-all
-      metrics.port: 9090
+      internal.port: 9100
     asserts:
       - contains:
           path: spec.ports
           content:
-            name: metrics
-            port: 9090
-            targetPort: metrics
+            name: internal
+            port: 9100
+            targetPort: internal
             protocol: TCP
         documentIndex: 1
 
@@ -78,7 +82,7 @@ tests:
         documentIndex: 2
       - lengthEqual:
           path: spec.ports
-          count: 1
+          count: 2
         documentIndex: 1
 
   - it: no https port when tls.mode is none or proxy
@@ -87,4 +91,4 @@ tests:
     asserts:
       - lengthEqual:
           path: spec.ports
-          count: 1
+          count: 2

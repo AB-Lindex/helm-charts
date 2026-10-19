@@ -287,35 +287,128 @@ tests:
       - isKind:
           of: ConfigMap
 
-  - it: V22 reports metrics.port equal to the HTTP port
+  - it: V22 reports metrics.port as removed
     set:
-      metrics.port: 8080
+      metrics.port: 9090
     asserts:
       - failedTemplate:
-          errorPattern: 'metrics\.port equals the HTTP port 8080 \(metrics\.port\)\.'
+          errorPattern: 'metrics\.port was removed \(metrics\.port\)\. Use internal\.port;'
 
-  - it: V22 reports metrics.port equal to the HTTPS port under native TLS
+  - it: V22 reports metrics.port even when it is 0
     set:
-      metrics.port: 8443
+      metrics.port: 0
+    asserts:
+      - failedTemplate:
+          errorPattern: 'metrics\.port was removed'
+
+  - it: V22 reports internal.port equal to the HTTP port
+    set:
+      internal.port: 8080
+    asserts:
+      - failedTemplate:
+          errorPattern: 'internal\.port equals the HTTP port 8080 \(internal\.port\)\.'
+
+  - it: V22 reports internal.port equal to the HTTPS port under native TLS
+    set:
+      internal.port: 8443
       tls.mode: native
       tls.existingSecret: opsie-tls
     asserts:
       - failedTemplate:
-          errorPattern: 'metrics\.port equals the HTTPS port 8443 \(metrics\.port\)\.'
+          errorPattern: 'internal\.port equals the HTTPS port 8443 \(internal\.port\)\.'
 
-  - it: V22 accepts 8443 as metrics.port without native TLS
+  - it: V22 accepts 8443 as internal.port without native TLS
     set:
-      metrics.port: 8443
+      internal.port: 8443
     asserts:
       - isKind:
           of: ConfigMap
 
-  - it: V22 rejects an out-of-range metrics.port through the schema
+  - it: V22 rejects an out-of-range internal.port through the schema
     set:
-      metrics.port: 70000
+      internal.port: 70000
     asserts:
       - failedTemplate:
-          errorPattern: 'metrics'
+          errorPattern: 'internal'
+
+  - it: V22 rejects internal.port 0 through the schema
+    set:
+      internal.port: 0
+    asserts:
+      - failedTemplate:
+          errorPattern: 'internal'
+
+  - it: V23 reports email.enabled without a domain
+    set:
+      email.enabled: true
+      email.existingSecret: opsie-email-shared
+      email.attachments.url: http://opsie-email:8082
+    asserts:
+      - failedTemplate:
+          errorPattern: 'email\.enabled is true without a domain \(email\.domain\)\.'
+
+  - it: V23 reports email.enabled without a Secret
+    set:
+      email.enabled: true
+      email.domain: mail.example.com
+      email.attachments.url: http://opsie-email:8082
+    asserts:
+      - failedTemplate:
+          errorPattern: 'email\.enabled is true without a Secret \(email\.existingSecret\)\.'
+
+  - it: V23 reports email.enabled without an attachment API URL
+    set:
+      email.enabled: true
+      email.domain: mail.example.com
+      email.existingSecret: opsie-email-shared
+    asserts:
+      - failedTemplate:
+          errorPattern: 'email\.enabled is true without an attachment API URL \(email\.attachments\.url\)\.'
+
+  - it: V23 reports the ServiceMonitor with the network policy and no metrics peers
+    set:
+      email.enabled: true
+      email.domain: mail.example.com
+      email.existingSecret: opsie-email-shared
+      email.attachments.url: http://opsie-email:8082
+      metrics.serviceMonitor.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'both enabled without metrics peers \(email\.networkPolicy\.metricsPeers\)\.'
+
+  - it: V23 accepts the ServiceMonitor without the network policy
+    set:
+      email.enabled: true
+      email.domain: mail.example.com
+      email.existingSecret: opsie-email-shared
+      email.attachments.url: http://opsie-email:8082
+      email.networkPolicy.enabled: false
+      metrics.serviceMonitor.enabled: true
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: V23 accepts the ServiceMonitor with metrics peers
+    set:
+      email.enabled: true
+      email.domain: mail.example.com
+      email.existingSecret: opsie-email-shared
+      email.attachments.url: http://opsie-email:8082
+      metrics.serviceMonitor.enabled: true
+      email.networkPolicy.metricsPeers:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: V23 is not checked while email is disabled
+    set:
+      metrics.serviceMonitor.enabled: true
+    asserts:
+      - isKind:
+          of: ConfigMap
 
   - it: reports several problems in one numbered error
     set:

@@ -22,28 +22,30 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].env[?(@.name == "NOT_MODULES")]
 
-  - it: metrics.port adds a named metrics container port and leaves the probes on http
-    set:
-      metrics.port: 9090
+  - it: renders a named internal container port and leaves the probes on http
     asserts:
       - contains:
           path: spec.template.spec.containers[0].ports
           content:
-            name: metrics
-            containerPort: 9090
+            name: internal
+            containerPort: 8090
             protocol: TCP
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.port
           value: http
 
-  - it: renders no metrics container port by default
+  - it: internal.port sets the internal container port
+    set:
+      internal.port: 9100
     asserts:
-      - notContains:
+      - contains:
           path: spec.template.spec.containers[0].ports
           content:
-            name: metrics
-            containerPort: 9090
+            name: internal
+            containerPort: 9100
             protocol: TCP
+      - notExists:
+          path: spec.template.spec.containers[0].ports[?(@.name == "metrics")]
 
   - it: split-ingest renders ingest and app with their modules
     set:

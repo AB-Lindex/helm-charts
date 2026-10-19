@@ -115,6 +115,13 @@ True (non-empty output) for parts that serve user or sender traffic and so recei
 {{- if ne . "processor" }}true{{ end }}
 {{- end }}
 
+{{/*
+The part that runs the internal-api module (mail route sync): all in all-in-one, else app.
+*/}}
+{{- define "opsie.internalPart" -}}
+{{- ternary "all" "app" (eq .Values.topology "all-in-one") }}
+{{- end }}
+
 {{- define "opsie.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
 {{- default (include "opsie.fullname" .) .Values.serviceAccount.name }}
@@ -245,9 +252,7 @@ DB_TYPE: {{ .Values.database.type | quote }}
 USE_REDIS: "true"
 REDIS_ADDR: {{ include "opsie.redisAddr" . | quote }}
 REDIS_DB: {{ .Values.redis.db | default 0 | int | toString | quote }}
-{{- if .Values.metrics.port }}
-METRICS_PORT: {{ .Values.metrics.port | int | toString | quote }}
-{{- end }}
+INTERNAL_PORT: {{ .Values.internal.port | int | toString | quote }}
 {{- with .Values.alerts.reopenWindow }}
 ALERT_REOPEN_WINDOW: {{ . | quote }}
 {{- end }}
@@ -346,6 +351,28 @@ Input: dict "root" . "part" "app".
 {{- if $v.auth.adminEmail.existingConfigMap }}
 - name: ADMIN_EMAIL_FILE
   value: {{ printf "/app/config/admin/%s" $v.auth.adminEmail.key | quote }}
+{{- end }}
+{{- if $v.email.enabled }}
+- name: EMAIL_DOMAIN
+  value: {{ $v.email.domain | quote }}
+- name: EMAIL_ROUTES_TOKEN
+  valueFrom:
+    secretKeyRef:
+      name: {{ $v.email.existingSecret }}
+      key: routes-token
+- name: EMAIL_ROUTES_TOKEN_NEXT
+  valueFrom:
+    secretKeyRef:
+      name: {{ $v.email.existingSecret }}
+      key: routes-token-next
+      optional: true
+- name: EMAIL_ATTACHMENT_API_URL
+  value: {{ $v.email.attachments.url | quote }}
+- name: EMAIL_ATTACHMENT_API_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ $v.email.existingSecret }}
+      key: attachments-secret
 {{- end }}
 {{- end }}
 {{- if include "opsie.partServesTraffic" $part }}

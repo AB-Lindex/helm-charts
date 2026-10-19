@@ -1,0 +1,57 @@
+{{- if and .Values.email.enabled .Values.email.networkPolicy.enabled }}
+{{- $np := .Values.email.networkPolicy }}
+{{- $part := include "opsie.internalPart" . }}
+{{- $peer := dict "podSelector" $np.opsieEmail.podSelector }}
+{{- if $np.opsieEmail.namespaceSelector }}
+{{- $_ := set $peer "namespaceSelector" $np.opsieEmail.namespaceSelector }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" . "suffix" "internal") }}
+  labels:
+    {{- include "opsie.partLabels" (dict "root" . "part" $part) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opsie.selectorLabels" (dict "root" . "part" $part) | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: http
+          protocol: TCP
+        {{- if eq .Values.tls.mode "native" }}
+        - port: https
+          protocol: TCP
+        {{- end }}
+    - from:
+        - {{ toYaml $peer | nindent 10 | trim }}
+        {{- with $np.metricsPeers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      ports:
+        - port: internal
+          protocol: TCP
+{{- if $np.egress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" . "suffix" "email-egress") }}
+  labels:
+    {{- include "opsie.partLabels" (dict "root" . "part" $part) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opsie.selectorLabels" (dict "root" . "part" $part) | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - {{ toYaml $peer | nindent 10 | trim }}
+      ports:
+        - port: {{ $np.egress.attachmentsPort | int }}
+          protocol: TCP
+{{- end }}
+{{- end }}

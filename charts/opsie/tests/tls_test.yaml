@@ -14,7 +14,7 @@ tests:
         documentIndex: 2
       - lengthEqual:
           path: spec.template.spec.containers[0].ports
-          count: 1
+          count: 2
         documentIndex: 2
       - notExists:
           path: spec.template.spec.volumes
@@ -41,7 +41,7 @@ tests:
         documentIndex: 1
       - lengthEqual:
           path: spec.template.spec.containers[0].ports
-          count: 1
+          count: 2
         documentIndex: 2
 
   - it: native mounts the Secret and sets the TLS variables on ingest and app
@@ -106,7 +106,7 @@ tests:
         documentIndex: 1
       - lengthEqual:
           path: spec.template.spec.containers[0].ports
-          count: 1
+          count: 2
         documentIndex: 1
 
   - it: httpsRedirect and hstsMaxAge render under native

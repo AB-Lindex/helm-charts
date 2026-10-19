@@ -19,7 +19,7 @@ spec:
   podTargetLabels:
     - app.kubernetes.io/component
   endpoints:
-    - port: {{ ternary "metrics" "http" (gt (int .Values.metrics.port) 0) }}
+    - port: internal
       path: {{ .Values.metrics.serviceMonitor.path }}
       interval: {{ .Values.metrics.serviceMonitor.interval }}
       scheme: http

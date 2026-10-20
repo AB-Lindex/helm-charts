@@ -15,6 +15,27 @@ entries:
   opsie:
   - apiVersion: v2
     appVersion: v0.19
+    created: "2026-10-20T21:59:31.612497011Z"
+    dependencies:
+    - condition: valkey.enabled
+      name: valkey
+      repository: https://valkey.io/valkey-helm/
+      version: 0.12.0
+    description: A Helm chart for Opsie, the on-call and alert management platform
+      (external MSSQL or PostgreSQL, Valkey required)
+    digest: ff7da0dd099c9825d29eb0ae120a00e2900fe583ba67aeb40529d75bc8295a58
+    home: https://github.com/AB-Lindex/helm-charts
+    kubeVersion: '>=1.32.0-0'
+    name: opsie
+    sources:
+    - https://github.com/AB-Lindex/helm-charts
+    - https://github.com/AB-Lindex/opsie
+    type: application
+    urls:
+    - https://github.com/AB-Lindex/helm-charts/releases/download/opsie-0.5.0/opsie-0.5.0.tgz
+    version: 0.5.0
+  - apiVersion: v2
+    appVersion: v0.19
     created: "2026-10-19T18:58:20.702204837Z"
     dependencies:
     - condition: valkey.enabled
@@ -139,4 +160,21 @@ entries:
     urls:
     - https://github.com/AB-Lindex/helm-charts/releases/download/opsie-0.1.0/opsie-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-19T18:58:20.702235193Z"
+  opsie-email:
+  - apiVersion: v2
+    appVersion: v0.1
+    created: "2026-10-20T21:59:31.801842543Z"
+    description: A Helm chart for opsie-email, the SMTP front end that delivers mail
+      to Opsie as alert envelopes and serves attachments back to it
+    digest: 6549739c742475f4fc5fea215b4bb6b726f767f4ddf519d2f1785489b634800d
+    home: https://github.com/AB-Lindex/helm-charts
+    kubeVersion: '>=1.32.0-0'
+    name: opsie-email
+    sources:
+    - https://github.com/AB-Lindex/helm-charts
+    - https://github.com/AB-Lindex/opsie-email
+    type: application
+    urls:
+    - https://github.com/AB-Lindex/helm-charts/releases/download/opsie-email-0.1.0/opsie-email-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-10-20T21:59:31.801872575Z"

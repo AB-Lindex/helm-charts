@@ -280,6 +280,7 @@ Only the top level of the folder is read. Every package must start with `custom`
 - OIDC is configured with `auth.oidc.issuer`, `auth.oidc.scopes` and the client Secret. The redirect URL defaults to `https://<first host>/api/auth/callback`, from the first `ingresses` entry with a host, else the first `httpRoutes` hostname. With several entries, set `auth.oidc.redirectUrl` explicitly.
 - `auth.sessionCacheTtl` sets `SESSION_CACHE_TTL` (at most 30s) for the parts that run `api`.
 - `auth.adminEmail.existingConfigMap` mounts the admin email file; `themes.existingConfigMap` mounts custom themes at `/app/themes/custom`.
+- `branding.environmentName` (with optional `branding.environmentColor`) shows a stamp such as DEV or QA above the sidebar menu; `branding.companyLogoUrl` shows a logo at the bottom of the sidebar. All are optional and reach the parts that run `api`.
 
 ## Operations
 
@@ -329,6 +330,7 @@ Every value is documented in [values.yaml](values.yaml). The top-level keys are:
 | `database` | Type, connection Secret and migration |
 | `valkey`, `redis` | The Valkey source |
 | `auth`, `themes` | JWT, OIDC, session cache, admin emails and themes |
+| `branding` | Optional environment stamp and company logo |
 | `tls` | TLS mode |
 | `alerts` | Alert tuning |
 | `rego` | Rego routing rules: helper folder, evaluation timeout, cache size |

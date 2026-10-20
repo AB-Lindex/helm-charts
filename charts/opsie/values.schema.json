@@ -111,6 +111,15 @@
         "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
       }
     },
+    "branding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "environmentName": { "type": "string", "maxLength": 16 },
+        "environmentColor": { "type": "string", "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}))?$" },
+        "companyLogoUrl": { "type": "string" }
+      }
+    },
     "rego": {
       "type": "object",
       "properties": {

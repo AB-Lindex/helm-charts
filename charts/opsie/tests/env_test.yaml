@@ -187,6 +187,54 @@ tests:
           path: spec.template.spec.containers[0].env[?(@.name == "SESSION_CACHE_TTL")]
         documentIndex: 2
 
+  - it: branding variables are absent by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "ENVIRONMENT_NAME")]
+        documentIndex: 2
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "ENVIRONMENT_COLOR")]
+        documentIndex: 2
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "COMPANY_LOGO_URL")]
+        documentIndex: 2
+
+  - it: branding reaches app only
+    set:
+      branding.environmentName: QA
+      branding.environmentColor: "#d97706"
+      branding.companyLogoUrl: https://cdn.example.com/logo.svg
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ENVIRONMENT_NAME
+            value: QA
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ENVIRONMENT_COLOR
+            value: "#d97706"
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPANY_LOGO_URL
+            value: https://cdn.example.com/logo.svg
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "ENVIRONMENT_NAME")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+
   - it: themes and the admin email file are mounted into app only
     set:
       themes.existingConfigMap: opsie-themes

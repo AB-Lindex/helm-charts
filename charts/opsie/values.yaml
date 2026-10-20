@@ -231,6 +231,14 @@ themes:
   # -- Existing ConfigMap with custom themes, mounted at /app/themes/custom.
   existingConfigMap: ""
 
+branding:
+  # -- ENVIRONMENT_NAME: label such as DEV, QA or PROD, shown as a stamp in the sidebar (at most 16 characters). Empty shows no stamp.
+  environmentName: ""
+  # -- ENVIRONMENT_COLOR: hex color of the stamp such as "#d97706". Empty uses the theme color.
+  environmentColor: ""
+  # -- COMPANY_LOGO_URL: logo shown at the bottom of the sidebar, an absolute http(s) URL or a path starting with /. Empty shows no logo.
+  companyLogoUrl: ""
+
 internal:
   # -- INTERNAL_PORT: plain-HTTP listener of every part. It serves /metrics unauthenticated and, with email.enabled, the mail route sync. Never routed by ingresses or httpRoutes; keep it cluster-internal.
   port: 8090

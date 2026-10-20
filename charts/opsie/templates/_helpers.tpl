@@ -357,6 +357,18 @@ Input: dict "root" . "part" "app".
 - name: THEMES_PATH
   value: /app/themes/custom
 {{- end }}
+{{- with $v.branding.environmentName }}
+- name: ENVIRONMENT_NAME
+  value: {{ . | quote }}
+{{- end }}
+{{- with $v.branding.environmentColor }}
+- name: ENVIRONMENT_COLOR
+  value: {{ . | quote }}
+{{- end }}
+{{- with $v.branding.companyLogoUrl }}
+- name: COMPANY_LOGO_URL
+  value: {{ . | quote }}
+{{- end }}
 {{- if $v.auth.adminEmail.existingConfigMap }}
 - name: ADMIN_EMAIL_FILE
   value: {{ printf "/app/config/admin/%s" $v.auth.adminEmail.key | quote }}

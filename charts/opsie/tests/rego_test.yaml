@@ -1,0 +1,159 @@
+suite: rego
+templates:
+  - templates/deployment.yaml
+  - templates/configmap.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: mounts the helper ConfigMap read-only on every part
+    template: templates/deployment.yaml
+    set:
+      topology: split-all
+      rego.helpers.existingConfigMap: lib
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: rego-helpers
+            configMap:
+              name: lib
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: rego-helpers
+            configMap:
+              name: lib
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: rego-helpers
+            configMap:
+              name: lib
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: rego-helpers
+            mountPath: /etc/opsie/rego-lib
+            readOnly: true
+        documentSelector:
+          path: metadata.name
+          value: opsie-ingest
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: rego-helpers
+            mountPath: /etc/opsie/rego-lib
+            readOnly: true
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: rego-helpers
+            mountPath: /etc/opsie/rego-lib
+            readOnly: true
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+
+  - it: mounts the helper ConfigMap on the all-in-one part
+    template: templates/deployment.yaml
+    set:
+      rego.helpers.existingConfigMap: lib
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: rego-helpers
+            configMap:
+              name: lib
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: rego-helpers
+            mountPath: /etc/opsie/rego-lib
+            readOnly: true
+
+  - it: sets REGO_HELPERS_DIR in the ConfigMap
+    template: templates/configmap.yaml
+    set:
+      rego.helpers.existingConfigMap: lib
+    asserts:
+      - equal:
+          path: data.REGO_HELPERS_DIR
+          value: /etc/opsie/rego-lib
+
+  - it: uses a custom mountPath for the mount and the variable
+    set:
+      rego.helpers.existingConfigMap: lib
+      rego.helpers.mountPath: /opt/rego
+    asserts:
+      - equal:
+          path: data.REGO_HELPERS_DIR
+          value: /opt/rego
+        template: templates/configmap.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: rego-helpers
+            mountPath: /opt/rego
+            readOnly: true
+        template: templates/deployment.yaml
+
+  - it: renders the timeout and the cache size
+    template: templates/configmap.yaml
+    set:
+      rego.evalTimeout: 500ms
+      rego.cacheBytes: "1048576"
+    asserts:
+      - equal:
+          path: data.REGO_EVAL_TIMEOUT
+          value: 500ms
+      - equal:
+          path: data.REGO_CACHE_BYTES
+          value: "1048576"
+
+  - it: renders a numeric cache size as a plain integer
+    template: templates/configmap.yaml
+    set:
+      rego.cacheBytes: 20971520
+    asserts:
+      - equal:
+          path: data.REGO_CACHE_BYTES
+          value: "20971520"
+
+  - it: the pod checksum changes with the rego settings
+    template: templates/deployment.yaml
+    set:
+      rego.evalTimeout: 500ms
+    asserts:
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/config"]
+          pattern: "^[0-9a-f]{64}$"
+  - it: renders nothing rego related by default
+    asserts:
+      - notExists:
+          path: data.REGO_HELPERS_DIR
+        template: templates/configmap.yaml
+      - notExists:
+          path: data.REGO_EVAL_TIMEOUT
+        template: templates/configmap.yaml
+      - notExists:
+          path: data.REGO_CACHE_BYTES
+        template: templates/configmap.yaml
+      - notExists:
+          path: spec.template.spec.volumes[?(@.name == "rego-helpers")]
+        template: templates/deployment.yaml
+      - notExists:
+          path: spec.template.spec.containers[0].volumeMounts[?(@.name == "rego-helpers")]
+        template: templates/deployment.yaml

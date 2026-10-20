@@ -1,0 +1,31 @@
+image:
+  repository: example.invalid/opsie-email
+  tag: v0.0.0-test
+existingSecret: opsie-email-shared
+routes:
+  url: http://opsie-internal:8090/api/internal/mail-routes
+opsie:
+  intakeUrl: http://opsie:80
+smtp:
+  acceptDomains: [mail.example.com]
+blob:
+  provider: azure
+  azure:
+    container: opsie-email
+    auth: workload-identity
+    accountUrl: https://opsieemail.blob.core.windows.net
+serviceAccount:
+  annotations:
+    azure.workload.identity/client-id: 00000000-0000-0000-0000-000000000000
+    azure.workload.identity/tenant-id: 11111111-1111-1111-1111-111111111111
+service:
+  smtp:
+    loadBalancerIP: 203.0.113.10
+    annotations:
+      service.beta.kubernetes.io/azure-pip-name: opsie-email
+      service.beta.kubernetes.io/azure-load-balancer-resource-group: rg-opsie
+networkPolicy:
+  metricsPeers:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring

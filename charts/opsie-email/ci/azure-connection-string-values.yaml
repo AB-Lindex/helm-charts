@@ -1,0 +1,14 @@
+image:
+  repository: example.invalid/opsie-email
+  tag: v0.0.0-test
+existingSecret: opsie-email-shared
+routes:
+  url: http://opsie-internal:8090/api/internal/mail-routes
+opsie:
+  intakeUrl: http://opsie:80
+blob:
+  provider: azure
+  existingSecret: opsie-email-blob
+  azure:
+    container: opsie-email
+    auth: connection-string

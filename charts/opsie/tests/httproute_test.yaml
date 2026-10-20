@@ -37,7 +37,9 @@ tests:
                     type: PathPrefix
                     value: /
               backendRefs:
-                - name: opsie
+                - group: ""
+                  kind: Service
+                  name: opsie
                   port: 80
 
   - it: two entries with different parentRefs render two routes
@@ -75,16 +77,20 @@ tests:
             - matches:
                 - path:
                     type: PathPrefix
-                    value: /api/events
+                    value: /
               backendRefs:
-                - name: opsie-ingest
+                - group: ""
+                  kind: Service
+                  name: opsie-app
                   port: 80
             - matches:
                 - path:
                     type: PathPrefix
-                    value: /
+                    value: /api/events
               backendRefs:
-                - name: opsie-app
+                - group: ""
+                  kind: Service
+                  name: opsie-ingest
                   port: 80
 
   - it: filters and matchHeaders land on every rule

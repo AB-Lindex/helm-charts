@@ -111,6 +111,9 @@ expect_fail "sse-max-connections-zero" "sse/maxConnections" -f "$FIXTURE" --set 
 expect_fail "sse-max-connections-per-user-negative" "sse/maxConnectionsPerUser" -f "$FIXTURE" --set sse.maxConnectionsPerUser=-1
 expect_fail "sse-annotation-not-a-string" "sse/ingress/annotations/x" -f "$FIXTURE" --set sse.ingress.annotations.x=5
 expect_fail "sse-unknown-key" "bogus" -f "$FIXTURE" --set sse.bogus=1
+expect_ok "rego-values-valid" -f "$CHART/ci/rego-values.yaml"
+expect_fail "rego-mount-path-relative" "rego/helpers/mountPath" -f "$FIXTURE" --set rego.helpers.mountPath=etc/rego
+expect_fail "rego-cache-bytes-not-numeric" "rego/cacheBytes" -f "$FIXTURE" --set-string rego.cacheBytes=big
 
 # --- collected validation messages as seen from the command line
 expect_fail "validate-header-singular" "opsie: 1 configuration problem:" -f "$FIXTURE" --set database.existingSecret=

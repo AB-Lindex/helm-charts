@@ -1,0 +1,15 @@
+apiVersion: v2
+name: opsie-email
+description: A Helm chart for opsie-email, the SMTP front end that delivers mail to Opsie as alert envelopes and serves attachments back to it
+
+type: application
+
+version: 0.1.0
+appVersion: "v0.1"
+
+kubeVersion: ">=1.32.0-0"
+
+home: https://github.com/AB-Lindex/helm-charts
+sources:
+  - https://github.com/AB-Lindex/helm-charts
+  - https://github.com/AB-Lindex/opsie-email

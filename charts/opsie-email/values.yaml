@@ -1,0 +1,168 @@
+# Default values for the opsie-email chart.
+# Every secret input is an existing Secret referenced by name; the chart never holds a secret value.
+
+# -- Base name of every resource. Empty falls back to <release>-opsie-email. The default keeps the attachment Service at http://opsie-email:8082, which is what the opsie chart (email.attachments.url) expects.
+fullnameOverride: opsie-email
+# -- Overrides the chart name used in labels and the default full name. Opsie selects the pods with app.kubernetes.io/name: opsie-email.
+nameOverride: ""
+
+image:
+  # -- Placeholder: the public image address is not known yet. Set it in your values file.
+  repository: TBD
+  # -- Empty falls back to the chart appVersion.
+  tag: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+  # -- Image pull secrets, a list of { name: ... }.
+  pullSecrets: []
+
+# -- Replicas. Mail is delivered synchronously and kept in memory only while a session runs, so replicas need no coordination.
+replicaCount: 2
+
+# -- Required: one existing Secret shared with the opsie release, in the same namespace. Keys: routes-token and attachments-secret, each at least 32 characters.
+existingSecret: ""
+
+routes:
+  # -- Required: URL of the route snapshot (ROUTES_SOURCE), for example http://opsie-internal:8090/api/internal/mail-routes. The token comes from the shared Secret.
+  url: ""
+  # -- ROUTES_POLL_INTERVAL. Empty leaves the application default (60s).
+  pollInterval: ""
+  # -- ROUTES_MAX_AGE: how long the last snapshot is used while polling fails. Empty leaves the application default (10m).
+  maxAge: ""
+
+opsie:
+  # -- Required: base URL of the Opsie listener that serves POST /api/events/{key} (OPSIE_INTAKE_URL), for example http://opsie:80. With the split topologies use the ingest Service.
+  intakeUrl: ""
+
+# -- FORWARD_TIMEOUT: shared deadline of blob writes and forward per message. Empty leaves the application default (10s).
+forwardTimeout: ""
+
+smtp:
+  # -- SMTP_DOMAIN: host name in the greeting. Empty leaves the application default.
+  domain: ""
+  # -- SMTP_ACCEPT_DOMAINS: recipient domains accepted before the route table decides. Set it to the email.domain of Opsie.
+  acceptDomains: []
+  # -- SMTP_MAX_MESSAGE_BYTES: ceiling for every route. Worst case memory is maxConns times this value. Empty leaves the application default.
+  maxMessageBytes: ""
+  # -- SMTP_RCPT_FAIL_MAX. Empty leaves the application default.
+  rcptFailMax: ""
+  # -- SMTP_RCPT_FAIL_WINDOW. Empty leaves the application default.
+  rcptFailWindow: ""
+
+# -- LOG_LEVEL: trace, debug, info, warn or error.
+logLevel: info
+
+blob:
+  # -- Required: azure | s3 | filesystem. The memory provider is for development only and is not offered by this chart.
+  provider: azure
+  # -- Existing Secret with the blob credentials. Keys: azure-connection-string (auth connection-string), azure-sas-token (auth sas), s3-access-key-id and s3-secret-access-key (optional: empty uses the default AWS credential chain). Not used with auth workload-identity or the filesystem provider.
+  existingSecret: ""
+  azure:
+    # -- Required: container name (BLOB_AZURE_CONTAINER).
+    container: ""
+    # -- workload-identity | connection-string | sas. workload-identity needs serviceAccount.annotations with azure.workload.identity/client-id.
+    auth: workload-identity
+    # -- Account URL, required for workload-identity and sas, for example https://account.blob.core.windows.net.
+    accountUrl: ""
+  s3:
+    # -- Required: bucket name (BLOB_S3_BUCKET).
+    bucket: ""
+    # -- Region; required without an endpoint.
+    region: ""
+    # -- Endpoint URL for S3-compatible storage.
+    endpoint: ""
+    # -- Path-style addressing (BLOB_S3_PATH_STYLE).
+    pathStyle: false
+  filesystem:
+    # -- Required: existing PersistentVolumeClaim, mounted at /data/blobs. More than one replica needs a ReadWriteMany volume.
+    existingClaim: ""
+
+serviceAccount:
+  # -- Create the ServiceAccount.
+  create: true
+  # -- Empty means the base name.
+  name: ""
+  # -- Extra labels on the ServiceAccount.
+  labels: {}
+  # -- Annotations on the ServiceAccount. With workload identity: azure.workload.identity/client-id (required) and azure.workload.identity/tenant-id.
+  annotations: {}
+  # -- automountServiceAccountToken. null leaves it unset (Kubernetes default: true). Workload identity needs the token.
+  automountServiceAccountToken: null
+
+service:
+  smtp:
+    # -- Public Service that receives mail. LoadBalancer | NodePort | ClusterIP.
+    type: LoadBalancer
+    # -- Service port; the container listens on 2525.
+    port: 25
+    # -- Local keeps the client address, which route allowedRanges depend on. Ignored for ClusterIP.
+    externalTrafficPolicy: Local
+    # -- Static public IP of the load balancer.
+    loadBalancerIP: ""
+    # -- Source ranges allowed to reach the load balancer. Empty allows everyone.
+    loadBalancerSourceRanges: []
+    # -- Annotations, for example on AKS service.beta.kubernetes.io/azure-pip-name and service.beta.kubernetes.io/azure-load-balancer-resource-group.
+    annotations: {}
+  attachments:
+    # -- Port of the cluster-internal attachment API Service (<base>, ClusterIP).
+    port: 8082
+  metrics:
+    # -- Port of the cluster-internal metrics Service (<base>-metrics, ClusterIP).
+    port: 9090
+
+networkPolicy:
+  # -- Render the ingress and egress NetworkPolicies. Needs a CNI that enforces NetworkPolicy.
+  enabled: true
+  opsie:
+    # -- Pods of Opsie: the only peers allowed to reach the attachment API, and the egress target for route sync and intake.
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: opsie
+    # -- Namespace of those pods. An empty selector means the namespace of this release.
+    namespaceSelector: {}
+    # -- Container ports of Opsie that opsie-email calls: the main listener (intake) and INTERNAL_PORT (route sync).
+    ports: [8080, 8090]
+  # -- Peers (NetworkPolicy "from" entries, for example the Prometheus pods) that may scrape /metrics. Empty leaves the metrics port closed.
+  metricsPeers: []
+  egress:
+    # -- Peers of the blob endpoint. A NetworkPolicy cannot match host names; narrow the default to the CIDRs of your storage account or the in-cluster object store.
+    blobTo:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+    # -- Port of the blob endpoint.
+    blobPort: 443
+    # -- Peers of login.microsoftonline.com (workload identity only). Same limit as blobTo.
+    entraTo:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+
+# -- Labels on the pods.
+podLabels: {}
+# -- Annotations on the pods.
+podAnnotations: {}
+# -- Extra environment variables.
+extraEnv: []
+
+# -- Pod-level security context.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container-level security context. The image holds a single static binary, so the root file system is read-only.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# -- Seconds to finish in-flight sessions; the application drains for 30 s.
+terminationGracePeriodSeconds: 45
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

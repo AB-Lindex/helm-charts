@@ -1,0 +1,103 @@
+suite: validation
+templates:
+  - templates/deployment.yaml
+values:
+  - ../ci/azure-workload-identity-values.yaml
+tests:
+  - it: renders the fixture
+    asserts:
+      - isKind:
+          of: Deployment
+
+  - it: fails the schema without existingSecret
+    set:
+      existingSecret: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "existingSecret"
+
+  - it: fails the schema for the memory provider
+    set:
+      blob.provider: memory
+    asserts:
+      - failedTemplate:
+          errorPattern: "blob/provider"
+
+  - it: fails the schema for workload identity without a client id
+    set:
+      serviceAccount.annotations:
+        azure.workload.identity/client-id: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "client-id.*minLength"
+
+  - it: accepts workload identity with an externally managed ServiceAccount
+    set:
+      serviceAccount.create: false
+      serviceAccount.name: external
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: external
+
+  - it: reports the TBD image placeholder
+    set:
+      image.repository: TBD
+    asserts:
+      - failedTemplate:
+          errorPattern: 'image\.repository is not set'
+
+  - it: reports a missing route URL
+    set:
+      routes.url: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No route snapshot URL is set \(routes\.url\)'
+
+  - it: reports a missing intake URL
+    set:
+      opsie.intakeUrl: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No Opsie intake URL is set \(opsie\.intakeUrl\)'
+
+  - it: reports a missing Azure container
+    set:
+      blob.azure.container: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'blob\.azure\.container'
+
+  - it: reports a missing account URL for workload identity
+    set:
+      blob.azure.accountUrl: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'blob\.azure\.accountUrl'
+
+  - it: reports a missing blob Secret for connection-string auth
+    values:
+      - ../ci/azure-connection-string-values.yaml
+    set:
+      blob.existingSecret: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'blob\.existingSecret'
+
+  - it: reports a missing S3 bucket
+    values:
+      - ../ci/s3-values.yaml
+    set:
+      blob.s3.bucket: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'blob\.s3\.bucket'
+
+  - it: reports a missing claim for the filesystem provider
+    values:
+      - ../ci/filesystem-values.yaml
+    set:
+      blob.filesystem.existingClaim: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'blob\.filesystem\.existingClaim'

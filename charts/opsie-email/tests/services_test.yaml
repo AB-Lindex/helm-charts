@@ -1,0 +1,73 @@
+suite: services
+templates:
+  - templates/services.yaml
+values:
+  - ../ci/azure-workload-identity-values.yaml
+tests:
+  - it: renders three Services
+    asserts:
+      - hasDocuments:
+          count: 3
+
+  - it: the public SMTP Service is a LoadBalancer with local traffic policy
+    documentSelector:
+      path: metadata.name
+      value: opsie-email-smtp
+    asserts:
+      - equal:
+          path: spec.type
+          value: LoadBalancer
+      - equal:
+          path: spec.externalTrafficPolicy
+          value: Local
+      - equal:
+          path: spec.loadBalancerIP
+          value: 203.0.113.10
+      - equal:
+          path: spec.ports[0].port
+          value: 25
+      - equal:
+          path: spec.ports[0].targetPort
+          value: smtp
+      - equal:
+          path: metadata.annotations["service.beta.kubernetes.io/azure-pip-name"]
+          value: opsie-email
+
+  - it: the attachment Service is cluster-internal and named like the opsie chart expects
+    documentSelector:
+      path: metadata.name
+      value: opsie-email
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0].port
+          value: 8082
+      - equal:
+          path: spec.ports[0].targetPort
+          value: attachments
+
+  - it: the metrics Service is cluster-internal
+    documentSelector:
+      path: metadata.name
+      value: opsie-email-metrics
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0].port
+          value: 9090
+
+  - it: a ClusterIP SMTP Service carries no traffic policy
+    set:
+      service.smtp.type: ClusterIP
+    documentSelector:
+      path: metadata.name
+      value: opsie-email-smtp
+    asserts:
+      - notExists:
+          path: spec.externalTrafficPolicy
+      - notExists:
+          path: spec.loadBalancerIP

@@ -1,0 +1,11 @@
+opsie-email {{ .Chart.AppVersion }} is installed as release {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+{{- if eq .Values.image.repository "TBD" }}
+
+WARNING: image.repository is the placeholder TBD.
+{{- end }}
+
+Mail arrives at the Service {{ include "opsie-email.nameWith" (dict "root" . "suffix" "smtp") }} ({{ .Values.service.smtp.type }}, port {{ .Values.service.smtp.port }}).
+The attachment API for Opsie is http://{{ include "opsie-email.fullname" . }}:{{ .Values.service.attachments.port }}; set it as email.attachments.url in the opsie release.
+/metrics is served on the Service {{ include "opsie-email.nameWith" (dict "root" . "suffix" "metrics") }}, port {{ .Values.service.metrics.port }}, and must stay cluster-internal.
+
+Changing an existing Secret that the chart only references does not restart the pods. Restart the Deployment after such a change.

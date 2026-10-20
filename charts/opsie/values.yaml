@@ -216,6 +216,17 @@ alerts:
   # -- ALERT_ZOMBIE_THRESHOLD; empty leaves the application default.
   zombieThreshold: ""
 
+rego:
+  helpers:
+    # -- Existing ConfigMap with Rego helper files (*.rego, packages starting with custom), mounted read-only at rego.helpers.mountPath on every part. Sets REGO_HELPERS_DIR.
+    existingConfigMap: ""
+    # -- Mount path of the helper ConfigMap, also the value of REGO_HELPERS_DIR.
+    mountPath: /etc/opsie/rego-lib
+  # -- REGO_EVAL_TIMEOUT, the time limit of one rule evaluation, for example 250ms; empty leaves the application default.
+  evalTimeout: ""
+  # -- REGO_CACHE_BYTES, the size limit of the compiled script cache in bytes; empty leaves the application default.
+  cacheBytes: ""
+
 themes:
   # -- Existing ConfigMap with custom themes, mounted at /app/themes/custom.
   existingConfigMap: ""

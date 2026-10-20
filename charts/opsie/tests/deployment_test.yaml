@@ -234,7 +234,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: example.invalid/opsie:v0
+          value: example.invalid/opsie:v0.19
 
   - it: checksum annotation changes with the ConfigMap content
     set:

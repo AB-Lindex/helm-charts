@@ -1,0 +1,164 @@
+suite: deployment
+templates:
+  - templates/deployment.yaml
+values:
+  - ../ci/azure-workload-identity-values.yaml
+tests:
+  - it: runs non-root with a read-only root file system and an emptyDir for /tmp
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 65532
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tmp
+            mountPath: /tmp
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tmp
+            emptyDir: {}
+
+  - it: labels the pods for Opsie's network policy and probes the HTTP port
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/name"]
+          value: opsie-email
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /readyz
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /healthz
+
+  - it: maps the shared Secret keys through secretKeyRef
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ROUTES_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-shared
+                key: routes-token
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ATTACHMENTS_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-shared
+                key: attachments-secret
+
+  - it: sets the connection settings
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ROUTES_SOURCE
+            value: http://opsie-internal:8090/api/internal/mail-routes
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPSIE_INTAKE_URL
+            value: http://opsie:80
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SMTP_ACCEPT_DOMAINS
+            value: mail.example.com
+
+  - it: workload identity labels the pod and mounts no blob secret
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels["azure.workload.identity/use"]
+          value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BLOB_AZURE_AUTH
+            value: workload-identity
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BLOB_AZURE_ACCOUNT_URL
+            value: https://opsieemail.blob.core.windows.net
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "BLOB_AZURE_CONNECTION_STRING")]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "BLOB_AZURE_SAS_TOKEN")]
+
+  - it: connection-string auth reads the blob Secret and sets no workload identity label
+    values:
+      - ../ci/azure-connection-string-values.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BLOB_AZURE_CONNECTION_STRING
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-blob
+                key: azure-connection-string
+      - notExists:
+          path: spec.template.metadata.labels["azure.workload.identity/use"]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "BLOB_AZURE_ACCOUNT_URL")]
+
+  - it: s3 reads static credentials from the blob Secret
+    values:
+      - ../ci/s3-values.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BLOB_S3_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-blob
+                key: s3-access-key-id
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BLOB_S3_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-blob
+                key: s3-secret-access-key
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BLOB_S3_PATH_STYLE
+            value: "true"
+
+  - it: s3 without a blob Secret uses the default credential chain
+    values:
+      - ../ci/s3-values.yaml
+    set:
+      blob.existingSecret: ""
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "BLOB_S3_ACCESS_KEY_ID")]
+
+  - it: filesystem mounts the claim at the blob root
+    values:
+      - ../ci/filesystem-values.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BLOB_FS_ROOT
+            value: /data/blobs
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: blobs
+            persistentVolumeClaim:
+              claimName: opsie-email-blobs

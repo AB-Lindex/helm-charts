@@ -1,0 +1,16 @@
+image:
+  repository: example.invalid/opsie-email
+  tag: v0.0.0-test
+existingSecret: opsie-email-shared
+routes:
+  url: http://opsie-internal:8090/api/internal/mail-routes
+opsie:
+  intakeUrl: http://opsie:80
+replicaCount: 1
+blob:
+  provider: filesystem
+  filesystem:
+    existingClaim: opsie-email-blobs
+service:
+  smtp:
+    type: ClusterIP

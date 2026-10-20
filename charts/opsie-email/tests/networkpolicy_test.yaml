@@ -1,0 +1,107 @@
+suite: networkpolicy
+templates:
+  - templates/networkpolicy.yaml
+values:
+  - ../ci/azure-workload-identity-values.yaml
+tests:
+  - it: renders an ingress and an egress policy
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: SMTP is open to everyone and the attachment API only to the Opsie pods
+    documentSelector:
+      path: metadata.name
+      value: opsie-email-ingress
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: smtp
+      - notExists:
+          path: spec.ingress[0].from
+      - equal:
+          path: spec.ingress[1].from[0].podSelector.matchLabels["app.kubernetes.io/name"]
+          value: opsie
+      - equal:
+          path: spec.ingress[1].ports[0].port
+          value: attachments
+      - equal:
+          path: spec.ingress[2].ports[0].port
+          value: metrics
+
+  - it: leaves the metrics port closed without peers
+    set:
+      networkPolicy.metricsPeers: []
+    documentSelector:
+      path: metadata.name
+      value: opsie-email-ingress
+    asserts:
+      - lengthEqual:
+          path: spec.ingress
+          count: 2
+
+  - it: the Opsie peer can name a namespace
+    set:
+      networkPolicy.opsie.namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: opsie
+    documentSelector:
+      path: metadata.name
+      value: opsie-email-ingress
+    asserts:
+      - equal:
+          path: spec.ingress[1].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: opsie
+
+  - it: egress reaches DNS, Opsie, the blob endpoint and Entra
+    documentSelector:
+      path: metadata.name
+      value: opsie-email-egress
+    asserts:
+      - lengthEqual:
+          path: spec.egress
+          count: 4
+      - equal:
+          path: spec.egress[1].ports[0].port
+          value: 8080
+      - equal:
+          path: spec.egress[1].ports[1].port
+          value: 8090
+      - equal:
+          path: spec.egress[2].ports[0].port
+          value: 443
+      - equal:
+          path: spec.egress[3].ports[0].port
+          value: 443
+
+  - it: egress has no Entra rule without workload identity
+    values:
+      - ../ci/s3-values.yaml
+    documentSelector:
+      path: metadata.name
+      value: opsie-email-egress
+    asserts:
+      - lengthEqual:
+          path: spec.egress
+          count: 3
+      - equal:
+          path: spec.egress[2].ports[0].port
+          value: 9000
+
+  - it: the filesystem provider needs no blob egress
+    values:
+      - ../ci/filesystem-values.yaml
+    documentSelector:
+      path: metadata.name
+      value: opsie-email-egress
+    asserts:
+      - lengthEqual:
+          path: spec.egress
+          count: 2
+
+  - it: renders nothing when disabled
+    set:
+      networkPolicy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

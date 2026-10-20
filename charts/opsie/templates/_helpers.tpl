@@ -259,6 +259,15 @@ ALERT_REOPEN_WINDOW: {{ . | quote }}
 {{- with .Values.alerts.zombieThreshold }}
 ALERT_ZOMBIE_THRESHOLD: {{ . | quote }}
 {{- end }}
+{{- with .Values.rego.evalTimeout }}
+REGO_EVAL_TIMEOUT: {{ . | quote }}
+{{- end }}
+{{- with .Values.rego.cacheBytes }}
+REGO_CACHE_BYTES: {{ . | int64 | toString | quote }}
+{{- end }}
+{{- if .Values.rego.helpers.existingConfigMap }}
+REGO_HELPERS_DIR: {{ .Values.rego.helpers.mountPath | quote }}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -403,6 +412,11 @@ Volumes of a part as YAML list items; empty when the part mounts nothing. Input:
 */}}
 {{- define "opsie.partVolumes" -}}
 {{- $v := .root.Values }}
+{{- if $v.rego.helpers.existingConfigMap }}
+- name: rego-helpers
+  configMap:
+    name: {{ $v.rego.helpers.existingConfigMap }}
+{{- end }}
 {{- if include "opsie.partRunsApi" .part }}
 {{- if $v.themes.existingConfigMap }}
 - name: themes
@@ -427,6 +441,11 @@ Volume mounts matching opsie.partVolumes. Input: dict "root" . "part" "app".
 */}}
 {{- define "opsie.partVolumeMounts" -}}
 {{- $v := .root.Values }}
+{{- if $v.rego.helpers.existingConfigMap }}
+- name: rego-helpers
+  mountPath: {{ $v.rego.helpers.mountPath }}
+  readOnly: true
+{{- end }}
 {{- if include "opsie.partRunsApi" .part }}
 {{- if $v.themes.existingConfigMap }}
 - name: themes

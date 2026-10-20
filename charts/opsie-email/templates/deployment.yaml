@@ -1,0 +1,225 @@
+{{- include "opsie-email.validate" . -}}
+{{- $podLabels := mergeOverwrite (include "opsie-email.selectorLabels" . | fromYaml) (dict) (.Values.podLabels | default dict) }}
+{{- if include "opsie-email.workloadIdentity" . }}
+{{- $_ := set $podLabels "azure.workload.identity/use" "true" }}
+{{- end }}
+{{- $blob := .Values.blob }}
+{{- $secret := .Values.existingSecret }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opsie-email.fullname" . }}
+  labels:
+    {{- include "opsie-email.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount | int }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "opsie-email.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- toYaml $podLabels | nindent 8 }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (include "opsie-email.serviceAccountName" .) }}
+      serviceAccountName: {{ . }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | int }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: opsie-email
+          image: {{ include "opsie-email.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: smtp
+              containerPort: 2525
+              protocol: TCP
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: attachments
+              containerPort: 8082
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          env:
+            - name: HTTP_PORT
+              value: "8080"
+            - name: SMTP_ADDR
+              value: ":2525"
+            - name: ATTACHMENT_API_ADDR
+              value: ":8082"
+            - name: METRICS_ADDR
+              value: ":9090"
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: ROUTES_SOURCE
+              value: {{ .Values.routes.url | quote }}
+            - name: ROUTES_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: routes-token
+            - name: ATTACHMENTS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: attachments-secret
+            - name: OPSIE_INTAKE_URL
+              value: {{ .Values.opsie.intakeUrl | quote }}
+            {{- with .Values.routes.pollInterval }}
+            - name: ROUTES_POLL_INTERVAL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.routes.maxAge }}
+            - name: ROUTES_MAX_AGE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.forwardTimeout }}
+            - name: FORWARD_TIMEOUT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.smtp.domain }}
+            - name: SMTP_DOMAIN
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.smtp.acceptDomains }}
+            - name: SMTP_ACCEPT_DOMAINS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.smtp.maxMessageBytes }}
+            - name: SMTP_MAX_MESSAGE_BYTES
+              value: {{ . | toString | quote }}
+            {{- end }}
+            {{- with .Values.smtp.rcptFailMax }}
+            - name: SMTP_RCPT_FAIL_MAX
+              value: {{ . | toString | quote }}
+            {{- end }}
+            {{- with .Values.smtp.rcptFailWindow }}
+            - name: SMTP_RCPT_FAIL_WINDOW
+              value: {{ . | quote }}
+            {{- end }}
+            - name: BLOB_PROVIDER
+              value: {{ $blob.provider | quote }}
+            {{- if eq $blob.provider "azure" }}
+            - name: BLOB_AZURE_CONTAINER
+              value: {{ $blob.azure.container | quote }}
+            - name: BLOB_AZURE_AUTH
+              value: {{ $blob.azure.auth | quote }}
+            {{- if has $blob.azure.auth (list "workload-identity" "sas") }}
+            - name: BLOB_AZURE_ACCOUNT_URL
+              value: {{ $blob.azure.accountUrl | quote }}
+            {{- end }}
+            {{- if eq $blob.azure.auth "connection-string" }}
+            - name: BLOB_AZURE_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $blob.existingSecret }}
+                  key: azure-connection-string
+            {{- end }}
+            {{- if eq $blob.azure.auth "sas" }}
+            - name: BLOB_AZURE_SAS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $blob.existingSecret }}
+                  key: azure-sas-token
+            {{- end }}
+            {{- end }}
+            {{- if eq $blob.provider "s3" }}
+            - name: BLOB_S3_BUCKET
+              value: {{ $blob.s3.bucket | quote }}
+            {{- with $blob.s3.region }}
+            - name: BLOB_S3_REGION
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $blob.s3.endpoint }}
+            - name: BLOB_S3_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            - name: BLOB_S3_PATH_STYLE
+              value: {{ $blob.s3.pathStyle | quote }}
+            {{- if $blob.existingSecret }}
+            - name: BLOB_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $blob.existingSecret }}
+                  key: s3-access-key-id
+            - name: BLOB_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $blob.existingSecret }}
+                  key: s3-secret-access-key
+            {{- end }}
+            {{- end }}
+            {{- if eq $blob.provider "filesystem" }}
+            - name: BLOB_FS_ROOT
+              value: /data/blobs
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if eq $blob.provider "filesystem" }}
+            - name: blobs
+              mountPath: /data/blobs
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if eq $blob.provider "filesystem" }}
+        - name: blobs
+          persistentVolumeClaim:
+            claimName: {{ $blob.filesystem.existingClaim }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

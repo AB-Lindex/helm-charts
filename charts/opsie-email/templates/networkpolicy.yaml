@@ -1,0 +1,74 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opsie-email.nameWith" (dict "root" . "suffix" "ingress") }}
+  labels:
+    {{- include "opsie-email.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opsie-email.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    {{- /* No "from": mail arrives from any host on the internet. */}}
+    - ports:
+        - port: smtp
+          protocol: TCP
+    - from:
+        - {{ include "opsie-email.opsiePeer" . | nindent 10 | trim }}
+      ports:
+        - port: attachments
+          protocol: TCP
+    {{- with $np.metricsPeers }}
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - port: metrics
+          protocol: TCP
+    {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opsie-email.nameWith" (dict "root" . "suffix" "egress") }}
+  labels:
+    {{- include "opsie-email.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opsie-email.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - {{ include "opsie-email.opsiePeer" . | nindent 10 | trim }}
+      ports:
+        {{- range $np.opsie.ports }}
+        - port: {{ . | int }}
+          protocol: TCP
+        {{- end }}
+    {{- if ne .Values.blob.provider "filesystem" }}
+    - to:
+        {{- toYaml $np.egress.blobTo | nindent 8 }}
+      ports:
+        - port: {{ $np.egress.blobPort | int }}
+          protocol: TCP
+    {{- end }}
+    {{- if include "opsie-email.workloadIdentity" . }}
+    - to:
+        {{- toYaml $np.egress.entraTo | nindent 8 }}
+      ports:
+        - port: 443
+          protocol: TCP
+    {{- end }}
+{{- end }}

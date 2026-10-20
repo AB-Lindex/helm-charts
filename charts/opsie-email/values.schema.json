@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["existingSecret", "blob"],
+  "properties": {
+    "fullnameOverride": { "type": "string" },
+    "nameOverride": { "type": "string" },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": ["string", "number"] },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+        "pullSecrets": { "type": "array" }
+      }
+    },
+    "replicaCount": { "type": "integer", "minimum": 0 },
+    "existingSecret": { "type": "string", "minLength": 1 },
+    "routes": {
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "pollInterval": { "type": "string" },
+        "maxAge": { "type": "string" }
+      }
+    },
+    "opsie": {
+      "type": "object",
+      "properties": {
+        "intakeUrl": { "type": "string" }
+      }
+    },
+    "logLevel": { "type": "string", "enum": ["trace", "debug", "info", "warn", "error"] },
+    "blob": {
+      "type": "object",
+      "required": ["provider"],
+      "properties": {
+        "provider": { "type": "string", "enum": ["azure", "s3", "filesystem"] },
+        "existingSecret": { "type": "string" },
+        "azure": {
+          "type": "object",
+          "properties": {
+            "container": { "type": "string" },
+            "auth": { "type": "string", "enum": ["workload-identity", "connection-string", "sas"] },
+            "accountUrl": { "type": "string" }
+          }
+        },
+        "s3": {
+          "type": "object",
+          "properties": {
+            "bucket": { "type": "string" },
+            "region": { "type": "string" },
+            "endpoint": { "type": "string" },
+            "pathStyle": { "type": "boolean" }
+          }
+        },
+        "filesystem": {
+          "type": "object",
+          "properties": {
+            "existingClaim": { "type": "string" }
+          }
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "labels": { "type": "object" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "smtp": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["LoadBalancer", "NodePort", "ClusterIP"] },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "externalTrafficPolicy": { "type": "string", "enum": ["Local", "Cluster"] },
+            "loadBalancerIP": { "type": "string" },
+            "loadBalancerSourceRanges": { "type": "array" },
+            "annotations": { "type": "object" }
+          }
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "metricsPeers": { "type": "array" }
+      }
+    }
+  },
+  "if": {
+    "required": ["blob", "serviceAccount"],
+    "properties": {
+      "blob": {
+        "required": ["provider", "azure"],
+        "properties": {
+          "provider": { "const": "azure" },
+          "azure": {
+            "required": ["auth"],
+            "properties": { "auth": { "const": "workload-identity" } }
+          }
+        }
+      },
+      "serviceAccount": {
+        "required": ["create"],
+        "properties": { "create": { "const": true } }
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "serviceAccount": {
+        "required": ["annotations"],
+        "properties": {
+          "annotations": {
+            "required": ["azure.workload.identity/client-id"],
+            "properties": {
+              "azure.workload.identity/client-id": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

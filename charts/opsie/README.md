@@ -16,6 +16,7 @@ Deploys [Opsie](https://github.com/AB-Lindex/opsie) to Kubernetes: one image, th
 - [Server-Sent Events stream](#server-sent-events-stream)
 - [Metrics](#metrics)
 - [Email integration](#email-integration)
+- [Rego helpers](#rego-helpers)
 - [Authentication](#authentication)
 - [Operations](#operations)
 - [Workload identity readiness](#workload-identity-readiness)
@@ -254,6 +255,25 @@ email:
 
 Rendering fails when `metrics.serviceMonitor.enabled` and the policy are both on and `metricsPeers` is empty, because scraping would stop silently. A NetworkPolicy only works with a CNI that enforces it. `email.networkPolicy.egress.enabled` adds an Egress policy that lets those pods reach `opsie-email` on `email.networkPolicy.egress.attachmentsPort`; an Egress policy isolates all other egress of the pods (database, Valkey, DNS), so enable it only together with your own egress rules.
 
+## Rego helpers
+
+Routing rules of type `rego` can call helper functions written in Rego. Put them in a ConfigMap with one `*.rego` file per helper package and mount it with `rego.helpers.existingConfigMap`:
+
+```yaml
+rego:
+  helpers:
+    existingConfigMap: opsie-rego-lib
+```
+
+| Value | Purpose |
+| --- | --- |
+| `rego.helpers.existingConfigMap` | ConfigMap with the helper files, mounted read-only on every part; sets `REGO_HELPERS_DIR` |
+| `rego.helpers.mountPath` | Mount path and value of `REGO_HELPERS_DIR` (default `/etc/opsie/rego-lib`) |
+| `rego.evalTimeout` | `REGO_EVAL_TIMEOUT`: time limit of one rule evaluation; empty keeps the application default |
+| `rego.cacheBytes` | `REGO_CACHE_BYTES`: size limit of the compiled script cache; empty keeps the application default |
+
+Only the top level of the folder is read. Every package must start with `custom` (`package custom.text`); scripts import them with `import data.custom.text`. The application watches the folder and loads a changed set as a whole or not at all, so a ConfigMap change rolls out without a restart. Replicas can briefly use different helper sets while the ConfigMap propagates. A folder that is missing at start is not retried until restart.
+
 ## Authentication
 
 - `JWT_SECRET` comes from `auth.jwt.existingSecret`. Rotation is a Secret change (`jwt-secret`, `jwt-secret-next`, `jwt-secret-previous`) followed by a restart; see [rotating JWT_SECRET](https://github.com/AB-Lindex/opsie/blob/main/docs/deployment.md#rotating-jwt_secret).
@@ -311,6 +331,7 @@ Every value is documented in [values.yaml](values.yaml). The top-level keys are:
 | `auth`, `themes` | JWT, OIDC, session cache, admin emails and themes |
 | `tls` | TLS mode |
 | `alerts` | Alert tuning |
+| `rego` | Rego routing rules: helper folder, evaluation timeout, cache size |
 | `metrics` | ServiceMonitor |
 | `internal` | Port of the internal listener (`/metrics`, mail route sync) |
 | `email` | Email integration: domain, shared Secret, attachment API, network policy |

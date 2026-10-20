@@ -111,6 +111,25 @@
         "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
       }
     },
+    "rego": {
+      "type": "object",
+      "properties": {
+        "helpers": {
+          "type": "object",
+          "properties": {
+            "existingConfigMap": { "type": "string" },
+            "mountPath": { "type": "string", "pattern": "^/" }
+          }
+        },
+        "evalTimeout": { "type": "string" },
+        "cacheBytes": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[0-9]*$" },
+            { "type": "integer", "minimum": 1 }
+          ]
+        }
+      }
+    },
     "email": {
       "type": "object",
       "properties": {

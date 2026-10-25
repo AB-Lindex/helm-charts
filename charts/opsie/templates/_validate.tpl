@@ -179,6 +179,11 @@ Included from templates/configmap.yaml, which always renders.
 {{- end }}
 {{- end }}
 
+{{- /* V24 */}}
+{{- if and $v.shareLinks.enabled (not (include "opsie.shareBaseUrl" .)) }}
+{{- $errs = append $errs "shareLinks.enabled is true but the public base URL is not known (shareLinks.publicBaseUrl). Set it, or give an ingresses entry a host or an httpRoutes entry a hostname to derive it from." }}
+{{- end }}
+
 {{- if $errs }}
 {{- $lines := list }}
 {{- range $i, $e := $errs }}

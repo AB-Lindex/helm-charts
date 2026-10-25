@@ -1,0 +1,59 @@
+suite: alert events switch
+templates:
+  - templates/configmap.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: renders no ALERT_EVENTS_DISABLED by default
+    asserts:
+      - notExists:
+          path: data.ALERT_EVENTS_DISABLED
+
+  - it: renders none with alertEvents.enabled and sse.enabled true
+    set:
+      alertEvents.enabled: true
+      sse.enabled: true
+    asserts:
+      - notExists:
+          path: data.ALERT_EVENTS_DISABLED
+
+  - it: renders ALERT_EVENTS_DISABLED in all-in-one when alertEvents.enabled is false
+    set:
+      alertEvents.enabled: false
+    asserts:
+      - equal:
+          path: data.ALERT_EVENTS_DISABLED
+          value: "true"
+
+  - it: renders ALERT_EVENTS_DISABLED in split-ingest when alertEvents.enabled is false
+    values:
+      - ../ci/split-ingest-values.yaml
+    asserts:
+      - equal:
+          path: data.ALERT_EVENTS_DISABLED
+          value: "true"
+
+  - it: renders ALERT_EVENTS_DISABLED in split-all when alertEvents.enabled is false
+    values:
+      - ../ci/split-all-values.yaml
+    set:
+      alertEvents.enabled: false
+    asserts:
+      - equal:
+          path: data.ALERT_EVENTS_DISABLED
+          value: "true"
+
+  - it: renders none in split-all by default
+    values:
+      - ../ci/split-all-values.yaml
+    asserts:
+      - notExists:
+          path: data.ALERT_EVENTS_DISABLED
+
+  - it: sse.enabled false turns alert events off too
+    set:
+      sse.enabled: false
+    asserts:
+      - equal:
+          path: data.ALERT_EVENTS_DISABLED
+          value: "true"

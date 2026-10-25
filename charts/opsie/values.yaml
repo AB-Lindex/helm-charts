@@ -231,6 +231,14 @@ themes:
   # -- Existing ConfigMap with custom themes, mounted at /app/themes/custom.
   existingConfigMap: ""
 
+shareLinks:
+  # -- SHARE_LINKS_ENABLED: alert cards get a Share button and the system can create links to alerts for notifications. Needs a public base URL.
+  enabled: false
+  # -- PUBLIC_BASE_URL: address of Opsie as seen by users and chat services, scheme and host only. Empty derives https://<first host> from ingresses or httpRoutes.
+  publicBaseUrl: ""
+  # -- SHARE_LINK_LIFETIME: how long a link works, for example 336h. Empty leaves the application default.
+  lifetime: ""
+
 branding:
   # -- ENVIRONMENT_NAME: label such as DEV, QA or PROD, shown as a stamp in the sidebar (at most 16 characters). Empty shows no stamp.
   environmentName: ""
@@ -299,6 +307,10 @@ sse:
     # -- Timeouts of the stream rule of every httpRoutes entry (Gateway API 1.1 or newer). An empty map renders none.
     timeouts:
       request: 3600s
+
+alertEvents:
+  # -- Alert change notifications on the SSE stream (alerts appear in open tabs within seconds). false sets ALERT_EVENTS_DISABLED=true on every part; the 30 s poll then covers everything. Needs Valkey, which the chart already requires.
+  enabled: true
 
 # -- Labels on the pods of every part.
 podLabels: {}

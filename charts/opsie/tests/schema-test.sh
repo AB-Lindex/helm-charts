@@ -111,7 +111,16 @@ expect_fail "sse-max-connections-zero" "sse/maxConnections" -f "$FIXTURE" --set 
 expect_fail "sse-max-connections-per-user-negative" "sse/maxConnectionsPerUser" -f "$FIXTURE" --set sse.maxConnectionsPerUser=-1
 expect_fail "sse-annotation-not-a-string" "sse/ingress/annotations/x" -f "$FIXTURE" --set sse.ingress.annotations.x=5
 expect_fail "sse-unknown-key" "bogus" -f "$FIXTURE" --set sse.bogus=1
+expect_ok "alert-events-valid" -f "$FIXTURE" --set alertEvents.enabled=true
+expect_ok "alert-events-disabled-valid" -f "$FIXTURE" --set alertEvents.enabled=false
+expect_fail "alert-events-enabled-string" "alertEvents/enabled" -f "$FIXTURE" --set-string alertEvents.enabled=yes
+expect_fail "alert-events-unknown-key" "mode" -f "$FIXTURE" --set alertEvents.mode=x
+expect_ok "alert-events-ci-full-values" -f "$CHART/ci/full-values.yaml"
+expect_ok "alert-events-ci-split-ingest-values" -f "$CHART/ci/split-ingest-values.yaml"
 expect_ok "rego-values-valid" -f "$CHART/ci/rego-values.yaml"
+expect_ok "share-links-valid" -f "$FIXTURE" --set shareLinks.enabled=true --set shareLinks.publicBaseUrl=https://opsie.example.com --set shareLinks.lifetime=72h
+expect_fail "share-links-base-url-with-path" "shareLinks/publicBaseUrl" -f "$FIXTURE" --set shareLinks.publicBaseUrl=https://opsie.example.com/x
+expect_fail "share-links-unknown-key" "bogus" -f "$FIXTURE" --set shareLinks.bogus=1
 expect_fail "rego-mount-path-relative" "rego/helpers/mountPath" -f "$FIXTURE" --set rego.helpers.mountPath=etc/rego
 expect_fail "rego-cache-bytes-not-numeric" "rego/cacheBytes" -f "$FIXTURE" --set-string rego.cacheBytes=big
 
@@ -120,6 +129,16 @@ expect_fail "validate-header-singular" "opsie: 1 configuration problem:" -f "$FI
 expect_fail "validate-header-plural" "opsie: 2 configuration problems:" -f "$FIXTURE" --set database.existingSecret= --set valkey.enabled=false
 
 expect_fail "extraobjects-invalid-yaml-after-tpl" "yaml" -f "$FIXTURE" -f "$CHART/tests/values/invalid-extraobject.yaml"
+
+# --- the pod checksum follows the alert events switch, so a change rolls the pods
+checksum_of() { render -f "$FIXTURE" "$@" 2>/dev/null | sed -n 's/.*checksum\/config: *//p' | head -1; }
+sum_on="$(checksum_of --set alertEvents.enabled=true)"
+sum_off="$(checksum_of --set alertEvents.enabled=false)"
+if [[ -n "$sum_on" && -n "$sum_off" && "$sum_on" != "$sum_off" ]]; then
+  pass "alert-events-checksum-changes"
+else
+  fail "alert-events-checksum-changes" "on=$sum_on off=$sum_off"
+fi
 
 # --- never rendered, in any topology
 for t in all-in-one split-ingest split-all; do

@@ -34,6 +34,9 @@ sse:
   maxConnectionsPerUser: 5
   maxConnections: 500
 
+alertEvents:
+  enabled: true
+
 ingresses:
   - name: users
     className: nginx

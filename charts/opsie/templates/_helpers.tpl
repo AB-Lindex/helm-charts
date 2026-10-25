@@ -221,6 +221,18 @@ OIDC redirect URL: the explicit value, else https://<first host>/api/auth/callba
 {{- end }}
 
 {{/*
+Public base URL of share links: the explicit value, else https://<first host>, else empty.
+*/}}
+{{- define "opsie.shareBaseUrl" -}}
+{{- if .Values.shareLinks.publicBaseUrl }}
+{{- .Values.shareLinks.publicBaseUrl | trimSuffix "/" }}
+{{- else }}
+{{- $host := include "opsie.firstHost" . }}
+{{- if $host }}{{ printf "https://%s" $host }}{{ end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Topology spread constraints of a part as YAML; nothing when disabled. A constraint without labelSelector gets the part's own selector.
 Input: dict "root" . "part" "app".
 */}}
@@ -252,12 +264,24 @@ DB_TYPE: {{ .Values.database.type | quote }}
 USE_REDIS: "true"
 REDIS_ADDR: {{ include "opsie.redisAddr" . | quote }}
 REDIS_DB: {{ .Values.redis.db | default 0 | int | toString | quote }}
+{{- if or (not .Values.alertEvents.enabled) (not .Values.sse.enabled) }}
+ALERT_EVENTS_DISABLED: "true"
+{{- end }}
 INTERNAL_PORT: {{ .Values.internal.port | int | toString | quote }}
 {{- with .Values.alerts.reopenWindow }}
 ALERT_REOPEN_WINDOW: {{ . | quote }}
 {{- end }}
 {{- with .Values.alerts.zombieThreshold }}
 ALERT_ZOMBIE_THRESHOLD: {{ . | quote }}
+{{- end }}
+{{- if .Values.shareLinks.enabled }}
+SHARE_LINKS_ENABLED: "true"
+{{- with include "opsie.shareBaseUrl" . }}
+PUBLIC_BASE_URL: {{ . | quote }}
+{{- end }}
+{{- with .Values.shareLinks.lifetime }}
+SHARE_LINK_LIFETIME: {{ . | quote }}
+{{- end }}
 {{- end }}
 {{- with .Values.rego.evalTimeout }}
 REGO_EVAL_TIMEOUT: {{ . | quote }}

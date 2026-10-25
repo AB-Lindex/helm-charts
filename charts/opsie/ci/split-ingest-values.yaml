@@ -15,3 +15,6 @@ valkey:
   enabled: true
   auth:
     usersExistingSecret: opsie-valkey
+
+alertEvents:
+  enabled: false

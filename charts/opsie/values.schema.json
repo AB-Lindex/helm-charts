@@ -228,6 +228,22 @@
         }
       }
     },
+    "alertEvents": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "shareLinks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "publicBaseUrl": { "type": "string", "pattern": "^(https?://[^/?#\\s]+/?)?$" },
+        "lifetime": { "type": "string" }
+      }
+    },
     "ingresses": {
       "type": "array",
       "items": {

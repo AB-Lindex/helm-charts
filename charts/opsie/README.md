@@ -190,6 +190,16 @@ Requirements on whatever sits in front of Opsie:
 
 `sse.maxConnectionsPerUser` (`SSE_MAX_CONNECTIONS_PER_USER`, application default 10) and `sse.maxConnections` (`SSE_MAX_CONNECTIONS`, application default 2000) are per pod. Above the per-user cap the oldest stream of that user is closed and the new one accepted; above the pod cap new requests receive `429` with `Retry-After`. `sse.enabled: false` sets `SSE_DISABLED=true`: the endpoint answers `404`, no stream routing is rendered and the UI hides the connection indicator.
 
+### Alert change notifications
+
+On the stream, the application tells the browsers of the affected teams within seconds when an alert is created, reopened, closed, acknowledged or reassigned; the browser then refetches (the top bar shows *Live* instead of *Connected*). The events carry identifiers only and authorization stays in the existing endpoints. The `alert-processing` and `api` pods publish through the Valkey the chart already requires, and the pods that run `api` forward each event to the open streams of the users who may see it. The validation rules `V06` and `V07` already refuse a release without exactly one Valkey source, so a split topology without Redis cannot render.
+
+- `alertEvents.enabled` (default `true`) is the opt-out. `false` sets `ALERT_EVENTS_DISABLED=true` on every part: nothing is published, the stream sends no alert events and the UI polls every 30 seconds as before. `sse.enabled: false` turns alert events off too. The opt-out does not remove the Valkey requirement.
+- Metrics: `opsie_sse_events_sent_total{type}` counts the events written, `opsie_sse_events_dropped_total` counts events dropped because a slow stream's buffer was full, and `opsie_sse_publish_failures_total` counts failed publishes (alert changes then show up at the next poll).
+- Changes made by an automatic close rule appear at the next poll (30 seconds, 120 seconds while the stream is live).
+
+Upgrade notes: open tabs receive alert events after their next reconnect, at most 36 minutes after the upgrade. Split deployments need Valkey, which the chart already enforces. Set `alertEvents.enabled: false` to keep the previous polling behavior.
+
 ## Metrics
 
 Every part serves `GET /metrics` unauthenticated on the internal port (`internal.port`, `INTERNAL_PORT`, default `8090`), a plain-HTTP listener that is always on. The chart adds a named `internal` container port and Service port to every part, and the `ServiceMonitor` scrapes that port. `/metrics` answers `404` on the HTTP and HTTPS ports, so it is never reachable through `ingresses` or `httpRoutes`, and `tls.httpsRedirect` does not affect scrapes. The port must differ from 8080, and from 8443 with `tls.mode: native`. Probes stay on the HTTP port.
@@ -281,6 +291,7 @@ Only the top level of the folder is read. Every package must start with `custom`
 - `auth.sessionCacheTtl` sets `SESSION_CACHE_TTL` (at most 30s) for the parts that run `api`.
 - `auth.adminEmail.existingConfigMap` mounts the admin email file; `themes.existingConfigMap` mounts custom themes at `/app/themes/custom`.
 - `branding.environmentName` (with optional `branding.environmentColor`) shows a stamp such as DEV or QA above the sidebar menu; `branding.companyLogoUrl` shows a logo at the bottom of the sidebar. All are optional and reach the parts that run `api`.
+- `shareLinks.enabled` turns on alert share links: a Share button on the alert card, and links the system itself can put in notifications. `shareLinks.publicBaseUrl` (`PUBLIC_BASE_URL`, scheme and host only) is the address users and chat services reach Opsie on. When empty, the chart uses `https://<first host>` from the first `ingresses` entry with a host, else the first `httpRoutes` hostname, and refuses to render if there is none. `shareLinks.lifetime` (`SHARE_LINK_LIFETIME`, for example `336h`) is optional. The variables reach every part through the ConfigMap.
 
 ## Operations
 
@@ -331,6 +342,7 @@ Every value is documented in [values.yaml](values.yaml). The top-level keys are:
 | `valkey`, `redis` | The Valkey source |
 | `auth`, `themes` | JWT, OIDC, session cache, admin emails and themes |
 | `branding` | Optional environment stamp and company logo |
+| `shareLinks` | Alert share links: switch, public base URL, lifetime |
 | `tls` | TLS mode |
 | `alerts` | Alert tuning |
 | `rego` | Rego routing rules: helper folder, evaluation timeout, cache size |
@@ -338,6 +350,7 @@ Every value is documented in [values.yaml](values.yaml). The top-level keys are:
 | `internal` | Port of the internal listener (`/metrics`, mail route sync) |
 | `email` | Email integration: domain, shared Secret, attachment API, network policy |
 | `sse` | Server-Sent Events stream: caps, kill switch and stream routing |
+| `alertEvents` | Alert change notifications on the stream: opt-out switch |
 | `podLabels`, `podAnnotations`, `extraEnv`, `extraEnvFrom`, `resources`, `podSecurityContext`, `securityContext` | Settings for every part |
 | `ingresses`, `httpRoutes` | External routing |
 | `extraObjects` | Extra manifests |

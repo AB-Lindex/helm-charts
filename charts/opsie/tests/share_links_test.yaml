@@ -1,0 +1,86 @@
+suite: share links
+templates:
+  - templates/configmap.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+tests:
+  - it: renders no share link variables by default
+    asserts:
+      - notExists:
+          path: data.SHARE_LINKS_ENABLED
+      - notExists:
+          path: data.PUBLIC_BASE_URL
+      - notExists:
+          path: data.SHARE_LINK_LIFETIME
+
+  - it: uses the explicit base URL without a trailing slash
+    set:
+      shareLinks.enabled: true
+      shareLinks.publicBaseUrl: https://opsie.example.com/
+      ingresses:
+        - name: a
+          hosts:
+            - host: ingress.example
+    asserts:
+      - equal:
+          path: data.SHARE_LINKS_ENABLED
+          value: "true"
+      - equal:
+          path: data.PUBLIC_BASE_URL
+          value: https://opsie.example.com
+
+  - it: falls back to the first Ingress host
+    set:
+      shareLinks.enabled: true
+      ingresses:
+        - name: a
+        - name: b
+          hosts:
+            - host: first.example
+            - host: second.example
+    asserts:
+      - equal:
+          path: data.PUBLIC_BASE_URL
+          value: https://first.example
+
+  - it: falls back to the first HTTPRoute hostname when no Ingress has a host
+    set:
+      shareLinks.enabled: true
+      ingresses:
+        - name: a
+      httpRoutes:
+        - name: g
+          parentRefs:
+            - name: gw
+          hostnames:
+            - route.example
+    asserts:
+      - equal:
+          path: data.PUBLIC_BASE_URL
+          value: https://route.example
+
+  - it: sets the lifetime only when given
+    set:
+      shareLinks.enabled: true
+      shareLinks.publicBaseUrl: https://opsie.example.com
+      shareLinks.lifetime: 72h
+    asserts:
+      - equal:
+          path: data.SHARE_LINK_LIFETIME
+          value: 72h
+
+  - it: renders nothing when disabled even with a base URL
+    set:
+      shareLinks.publicBaseUrl: https://opsie.example.com
+    asserts:
+      - notExists:
+          path: data.SHARE_LINKS_ENABLED
+      - notExists:
+          path: data.PUBLIC_BASE_URL
+
+  - it: V24 reports an unknown base URL
+    set:
+      shareLinks.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'shareLinks\.enabled is true but the public base URL is not known \(shareLinks\.publicBaseUrl\)'

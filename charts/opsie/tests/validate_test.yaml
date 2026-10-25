@@ -58,6 +58,35 @@ tests:
       - failedTemplate:
           errorPattern: 'No Valkey source is selected \(valkey\.enabled, redis\.enabled\)\. Set valkey\.enabled=true'
 
+  - it: V06 still reports no Valkey source in split topologies with alertEvents.enabled true or false
+    set:
+      topology: split-all
+      valkey.enabled: false
+      alertEvents.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No Valkey source is selected'
+
+  - it: V06 is not bypassed by the alertEvents opt-out
+    set:
+      topology: split-ingest
+      valkey.enabled: false
+      alertEvents.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No Valkey source is selected'
+
+  - it: V07 is not bypassed by the alertEvents opt-out
+    set:
+      topology: split-all
+      alertEvents.enabled: false
+      redis.enabled: true
+      redis.addr: redis:6379
+      redis.existingSecret: opsie-redis
+    asserts:
+      - failedTemplate:
+          errorPattern: 'Two Valkey sources are selected'
+
   - it: V07 reports two Valkey sources
     set:
       redis.enabled: true

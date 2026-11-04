@@ -1,6 +1,6 @@
 # opsie Helm Chart
 
-Deploys [Opsie](https://github.com/AB-Lindex/opsie) to Kubernetes: one image, three deployment topologies, an external MSSQL (or PostgreSQL) database and a required Valkey service, either bundled as a sub-chart or external.
+Deploys [Opsie](https://github.com/AB-Lindex/opsie) to Kubernetes: one image, three deployment topologies, an external MSSQL (or PostgreSQL) database and a required Valkey service, bundled (standalone or with Sentinel) or external.
 
 ## Contents
 
@@ -27,7 +27,7 @@ Deploys [Opsie](https://github.com/AB-Lindex/opsie) to Kubernetes: one image, th
 
 - Helm 3 and Kubernetes 1.32 or newer.
 - An external database with transaction support, MSSQL (primary) or PostgreSQL. The chart never creates a database, and the `memory` provider, `DEVMODE` and `ENABLE_MOCK_DATA` are never offered.
-- A Valkey or Redis service with pub/sub: either the bundled `valkey` sub-chart or an external one. Microsoft Garnet is not supported because it lacks pub/sub.
+- A Valkey or Redis service with pub/sub: either the bundled `valkey` sub-chart (standalone), the bundled `valkeySentinel` setup (replication with Sentinel) or an external one. Microsoft Garnet is not supported because it lacks pub/sub. Valkey Cluster (sharded) is not supported.
 - The Gateway API CRDs only if `httpRoutes` is used, and the Prometheus Operator CRDs only if `metrics.serviceMonitor.enabled` is used. The chart installs neither.
 
 ## Installation
@@ -66,8 +66,8 @@ The chart has no `Secret` template and no value that holds a secret. Every secre
 | `opsie-database` | `database.existingSecret` | `connection-string` (`database.existingSecretKey`), form `sqlserver://user:pass@host:1433?database=opsie` |
 | `opsie-jwt` | `auth.jwt.existingSecret` | `jwt-secret` (at least 32 characters), optional `jwt-secret-next`, optional `jwt-secret-previous` |
 | `opsie-oidc` | `auth.oidc.existingSecret` | `client-id`, `client-secret` |
-| `opsie-valkey` | `valkey.auth.usersExistingSecret` | `default` (the key is the ACL user name) |
-| `opsie-redis` | `redis.existingSecret` | `password` (`redis.existingSecretKey`) |
+| `opsie-valkey` | `valkey.auth.usersExistingSecret`, `valkeySentinel.auth.usersExistingSecret`, `valkeySentinel.sentinel.existingSecret` | `default` (the key is the ACL user name). With `valkeySentinel` also `replication-user` and `sentinel` (the Sentinel password); the three passwords differ |
+| `opsie-redis` | `redis.existingSecret` | `password` (`redis.existingSecretKey`); in sentinel mode also `sentinel` (`redis.existingSecretSentinelKey`) |
 | `opsie-email-shared` | `email.existingSecret` | `routes-token` (at least 32 characters), optional `routes-token-next`, `attachments-secret` (at least 32 characters); only with `email.enabled` |
 
 Secrets reach only the parts that use them. The database connection string and the Redis password go to every part; JWT, OIDC, themes and the admin email file go only to the parts that run the `api` module (`all` and `app`); TLS settings go to the parts that serve traffic (`all`, `ingest`, `app`).
@@ -115,10 +115,34 @@ Rollouts use `RollingUpdate` with `maxSurge: 1` and `maxUnavailable: 0` (`strate
 
 Valkey is required in every topology. Set exactly one of:
 
-- `valkey.enabled: true` for the bundled sub-chart (the upstream [valkey-io/valkey-helm](https://github.com/valkey-io/valkey-helm) chart, pinned in `Chart.yaml`). Authentication is mandatory: `valkey.auth.usersExistingSecret` names a Secret whose key `default` holds the password. Everything else under `valkey` passes through to the sub-chart.
-- `redis.enabled: true` for an external Valkey or Redis: `redis.addr`, `redis.db` and a password Secret in `redis.existingSecret`.
+- `valkey.enabled: true` for the bundled standalone sub-chart (the upstream [valkey-io/valkey-helm](https://github.com/valkey-io/valkey-helm) chart, pinned in `Chart.yaml`): one pod, no volume. Authentication is mandatory: `valkey.auth.usersExistingSecret` (default `opsie-valkey`) names a Secret whose key `default` holds the password. Everything else under `valkey` passes through to the sub-chart. When this pod restarts, every user is signed out.
+- `valkeySentinel.enabled: true` for the bundled replication setup (the same upstream chart under the alias `valkeySentinel`): three Valkey pods, each with a `100Mi` volume on the cluster's default storage class (`valkeySentinel.persistence.size` and `.storageClass`), three Sentinels and a PodDisruptionBudget for each. Opsie runs with `REDIS_MODE=sentinel` and finds the primary through the Sentinel Service, so a restart or failover of a Valkey pod keeps the sessions. The Secret named in `valkeySentinel.auth.usersExistingSecret` and `valkeySentinel.sentinel.existingSecret` (default `opsie-valkey`) needs the keys `default`, `replication-user` and `sentinel`, with three different passwords. Everything else under `valkeySentinel` passes through to the sub-chart.
+- `redis.enabled: true` for an external Valkey or Redis: `redis.addr` and a password Secret in `redis.existingSecret`. With `redis.mode: sentinel`, `redis.addr` is a comma separated list of Sentinel addresses and the same Secret holds the Sentinel password under `redis.existingSecretSentinelKey`. The external service must run Valkey 9 or later or Redis with pub/sub, with the user `default` (and, for Sentinel, the user `sentinel` and the master name `mymaster`). Opsie uses database 0.
 
-With the sub-chart, `REDIS_ADDR` is `<release>-valkey:6379`, which is `opsie-valkey:6379` for the release name `opsie`. For another release name, pin it with `valkey.fullnameOverride`.
+Switching from `valkey.enabled` to `valkeySentinel.enabled` needs no other setting when the Secret has the three keys: `REDIS_MODE`, `REDIS_ADDR` and `REDIS_SENTINEL_PASSWORD` follow the switch.
+
+| Source | `REDIS_MODE` | `REDIS_ADDR` (release `opsie`) |
+| --- | --- | --- |
+| `valkey.enabled` | `standalone` | `opsie-valkey:6379` |
+| `valkeySentinel.enabled` | `sentinel` | `opsie-valkey-sentinel:26379` |
+| `redis.enabled` | `redis.mode` | `redis.addr` |
+
+The address follows the release name. For another release name, pin it with `valkey.fullnameOverride` or `valkeySentinel.fullnameOverride`. `valkeySentinel.nameOverride: valkey` is set so that the alias gives the same resource names as `valkey.enabled`; do not change it.
+
+The spread constraints of `valkeySentinel` select the pods by `app.kubernetes.io/name` only, because the sub-chart does not template them. They match this namespace only; add `app.kubernetes.io/instance` when several releases run in one namespace.
+
+### Restarts and upgrades
+
+Opsie answers `503` with `Retry-After` while Valkey is unreachable and never signs users out because of it. A session that Valkey confirmed within the last `auth.sessionCacheTtl` plus `auth.sessionCacheStaleGrace` is still served from memory. All pods wait `terminationGracePeriodSeconds` (default `130`, the application's own shutdown timeout is 120 s) to finish running batches.
+
+Switching an existing release from `valkey.enabled` to `valkeySentinel.enabled` logs everyone out once: the standalone instance has no volume, so its sessions do not carry over. Helm replaces the Deployment `opsie-valkey` with the StatefulSet `opsie-valkey` and keeps patching the shared ServiceAccount, init-scripts ConfigMap and Service `opsie-valkey` (none has an immutable field set). The Secret `opsie-valkey` is rendered by neither alias.
+
+| Created by `valkey.enabled` only | Created by `valkeySentinel.enabled` only |
+| --- | --- |
+| Deployment `opsie-valkey` | StatefulSets `opsie-valkey` and `opsie-valkey-sentinel` |
+| | Services `-headless`, `-read`, `-sentinel`, `-sentinel-hl` |
+| | ConfigMap `-sentinel-scripts` |
+| | PodDisruptionBudgets `opsie-valkey` and `opsie-valkey-sentinel` |
 
 ## Database migration
 
@@ -288,7 +312,7 @@ Only the top level of the folder is read. Every package must start with `custom`
 
 - `JWT_SECRET` comes from `auth.jwt.existingSecret`. Rotation is a Secret change (`jwt-secret`, `jwt-secret-next`, `jwt-secret-previous`) followed by a restart; see [rotating JWT_SECRET](https://github.com/AB-Lindex/opsie/blob/main/docs/deployment.md#rotating-jwt_secret).
 - OIDC is configured with `auth.oidc.issuer`, `auth.oidc.scopes` and the client Secret. The redirect URL defaults to `https://<first host>/api/auth/callback`, from the first `ingresses` entry with a host, else the first `httpRoutes` hostname. With several entries, set `auth.oidc.redirectUrl` explicitly.
-- `auth.sessionCacheTtl` sets `SESSION_CACHE_TTL` (at most 30s) for the parts that run `api`.
+- `auth.sessionCacheTtl` sets `SESSION_CACHE_TTL` (at most 30s; the application default is 15s, `0` switches the cache off) and `auth.sessionCacheStaleGrace` sets `SESSION_CACHE_STALE_GRACE` (at most 15s, default 15s, `0` disables stale serving) for the parts that run `api`.
 - `auth.adminEmail.existingConfigMap` mounts the admin email file; `themes.existingConfigMap` mounts custom themes at `/app/themes/custom`.
 - `branding.environmentName` (with optional `branding.environmentColor`) shows a stamp such as DEV or QA above the sidebar menu; `branding.companyLogoUrl` shows a logo at the bottom of the sidebar. All are optional and reach the parts that run `api`.
 - `shareLinks.enabled` turns on alert share links: a Share button on the alert card, and links the system itself can put in notifications. `shareLinks.publicBaseUrl` (`PUBLIC_BASE_URL`, scheme and host only) is the address users and chat services reach Opsie on. When empty, the chart uses `https://<first host>` from the first `ingresses` entry with a host, else the first `httpRoutes` hostname, and refuses to render if there is none. `shareLinks.lifetime` (`SHARE_LINK_LIFETIME`, for example `336h`) is optional. The variables reach every part through the ConfigMap.
@@ -323,7 +347,7 @@ Opsie connects to MSSQL with SQL authentication only; passwordless access needs 
 ```text
 Error: execution error at (opsie/templates/configmap.yaml:1:4): opsie: 2 configuration problems:
   1. No database Secret is named (database.existingSecret). Set it to an existing Secret holding the connection string under database.existingSecretKey.
-  2. No Valkey source is selected (valkey.enabled, redis.enabled). Set valkey.enabled=true for the bundled sub-chart, or redis.enabled=true with redis.addr for an external Valkey/Redis.
+  2. No Valkey source is selected (valkey.enabled, valkeySentinel.enabled, redis.enabled). Set valkey.enabled=true for the bundled standalone sub-chart, valkeySentinel.enabled=true for the bundled Sentinel setup, or redis.enabled=true with redis.addr for an external Valkey/Redis.
 ```
 
 `httpRoutes` are additionally checked against the cluster's Gateway API. That check is skipped by plain `helm template`; add `--api-versions apps/v1/Deployment` to simulate a cluster.
@@ -336,10 +360,10 @@ Every value is documented in [values.yaml](values.yaml). The top-level keys are:
 | --- | --- |
 | `fullnameOverride`, `nameOverride` | Resource naming |
 | `image` | Repository, tag, pull policy and pull secrets |
-| `topology`, `parts`, `topologySpread`, `strategy`, `podDisruptionBudget` | Parts, replicas, scheduling and rollout |
+| `topology`, `parts`, `topologySpread`, `strategy`, `terminationGracePeriodSeconds`, `podDisruptionBudget` | Parts, replicas, scheduling and rollout |
 | `serviceAccount` | The shared ServiceAccount |
 | `database` | Type, connection Secret and migration |
-| `valkey`, `redis` | The Valkey source |
+| `valkey`, `valkeySentinel`, `redis` | The Valkey source |
 | `auth`, `themes` | JWT, OIDC, session cache, admin emails and themes |
 | `branding` | Optional environment stamp and company logo |
 | `shareLinks` | Alert share links: switch, public base URL, lifetime |

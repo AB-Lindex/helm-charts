@@ -175,6 +175,32 @@ tests:
           path: metadata.name
           value: opsie-processor
 
+  - it: SESSION_CACHE_STALE_GRACE renders for app only and only when set
+    set:
+      auth.sessionCacheStaleGrace: 10s
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SESSION_CACHE_STALE_GRACE
+            value: 10s
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SESSION_CACHE_STALE_GRACE")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-processor
+
+  - it: SESSION_CACHE_STALE_GRACE is absent by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SESSION_CACHE_STALE_GRACE")]
+        documentSelector:
+          path: metadata.name
+          value: opsie-app
+
   - it: OIDC variables are absent without an issuer
     asserts:
       - notExists:

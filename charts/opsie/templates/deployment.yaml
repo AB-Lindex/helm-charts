@@ -38,6 +38,7 @@ spec:
       labels:
         {{- toYaml $podLabels | nindent 8 }}
     spec:
+      terminationGracePeriodSeconds: {{ $root.Values.terminationGracePeriodSeconds | int }}
       {{- with $root.Values.image.pullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

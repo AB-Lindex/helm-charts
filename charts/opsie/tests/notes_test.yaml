@@ -41,6 +41,25 @@ tests:
           path: raw
           pattern: "port-forward"
 
+  - it: tells a standalone Valkey user that a restart signs everyone out
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: "valkeySentinel\\.enabled=true"
+      - matchRegex:
+          path: raw
+          pattern: "every user is signed out"
+
+  - it: stays quiet about it with valkeySentinel
+    values:
+      - ../ci/sentinel-values.yaml
+    set:
+      valkey.enabled: false
+    asserts:
+      - notMatchRegex:
+          path: raw
+          pattern: "signed out"
+
   - it: explains where /metrics lives and warns about secret restarts
     asserts:
       - matchRegex:

@@ -35,17 +35,25 @@ Included from templates/configmap.yaml, which always renders.
 {{- end }}
 
 {{- /* V06, V07 */}}
-{{- if and (not $v.valkey.enabled) (not $v.redis.enabled) }}
-{{- $errs = append $errs "No Valkey source is selected (valkey.enabled, redis.enabled). Set valkey.enabled=true for the bundled sub-chart, or redis.enabled=true with redis.addr for an external Valkey/Redis." }}
+{{- $sentinel := $v.valkeySentinel | default dict }}
+{{- $sources := 0 }}
+{{- if $v.valkey.enabled }}{{ $sources = add1 $sources }}{{ end }}
+{{- if $sentinel.enabled }}{{ $sources = add1 $sources }}{{ end }}
+{{- if $v.redis.enabled }}{{ $sources = add1 $sources }}{{ end }}
+{{- if eq $sources 0 }}
+{{- $errs = append $errs "No Valkey source is selected (valkey.enabled, valkeySentinel.enabled, redis.enabled). Set valkey.enabled=true for the bundled standalone sub-chart, valkeySentinel.enabled=true for the bundled Sentinel setup, or redis.enabled=true with redis.addr for an external Valkey/Redis." }}
 {{- end }}
-{{- if and $v.valkey.enabled $v.redis.enabled }}
-{{- $errs = append $errs "Two Valkey sources are selected (valkey.enabled, redis.enabled). Set exactly one of them to true." }}
+{{- if gt $sources 1 }}
+{{- $errs = append $errs "More than one Valkey source is selected (valkey.enabled, valkeySentinel.enabled, redis.enabled). Set exactly one of them to true." }}
 {{- end }}
 
 {{- /* V08 */}}
 {{- if $v.redis.enabled }}
+{{- if not (has $v.redis.mode (list "standalone" "sentinel")) }}
+{{- $errs = append $errs (printf "redis.mode %q is not supported (redis.mode). Use one of: standalone, sentinel." (toString $v.redis.mode)) }}
+{{- end }}
 {{- if not $v.redis.addr }}
-{{- $errs = append $errs "redis.enabled is true without an address (redis.addr). Set redis.addr to host:port of the Valkey/Redis service." }}
+{{- $errs = append $errs "redis.enabled is true without an address (redis.addr). Set redis.addr to host:port of the Valkey/Redis service, or a comma separated list of Sentinel addresses when redis.mode is sentinel." }}
 {{- end }}
 {{- if not $v.redis.existingSecret }}
 {{- $errs = append $errs "redis.enabled is true without a password Secret (redis.existingSecret). Set it to an existing Secret holding the password under redis.existingSecretKey." }}
@@ -59,6 +67,19 @@ Included from templates/configmap.yaml, which always renders.
 {{- end }}
 {{- if not $v.valkey.auth.enabled }}
 {{- $errs = append $errs "Valkey authentication is switched off (valkey.auth.enabled). Opsie does not run Valkey without a password; set it to true." }}
+{{- end }}
+{{- end }}
+{{- if $sentinel.enabled }}
+{{- $sauth := $sentinel.auth | default dict }}
+{{- $ssentinel := $sentinel.sentinel | default dict }}
+{{- if not $sauth.usersExistingSecret }}
+{{- $errs = append $errs "valkeySentinel.enabled is true without a password Secret (valkeySentinel.auth.usersExistingSecret). Set it to an existing Secret with the keys default and replication-user." }}
+{{- end }}
+{{- if not $ssentinel.existingSecret }}
+{{- $errs = append $errs "valkeySentinel.enabled is true without a Sentinel password Secret (valkeySentinel.sentinel.existingSecret). Set it to an existing Secret holding the Sentinel password under valkeySentinel.sentinel.passwordKey." }}
+{{- end }}
+{{- if not $sauth.enabled }}
+{{- $errs = append $errs "Valkey authentication is switched off (valkeySentinel.auth.enabled). Opsie does not run Valkey without a password; set it to true." }}
 {{- end }}
 {{- end }}
 

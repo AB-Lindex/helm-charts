@@ -146,10 +146,22 @@ Service account of the migration hook or init container; empty means the namespa
 {{- end }}
 
 {{/*
+Values of the Valkey sub-chart in use: valkeySentinel when it is enabled, else valkey.
+*/}}
+{{- define "opsie.valkeyValues" -}}
+{{- $s := .Values.valkeySentinel | default dict }}
+{{- if $s.enabled }}
+{{- $s | toJson }}
+{{- else }}
+{{- .Values.valkey | default dict | toJson }}
+{{- end }}
+{{- end }}
+
+{{/*
 Name of the Valkey sub-chart Service; mirrors the sub-chart's own fullname rules.
 */}}
 {{- define "opsie.valkeyFullname" -}}
-{{- $v := .Values.valkey | default dict }}
+{{- $v := include "opsie.valkeyValues" . | fromJson }}
 {{- if $v.fullnameOverride }}
 {{- $v.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -163,11 +175,23 @@ Name of the Valkey sub-chart Service; mirrors the sub-chart's own fullname rules
 {{- end }}
 
 {{/*
-REDIS_ADDR: the external address, or the sub-chart Service on port 6379. The one place it is built.
+REDIS_MODE: sentinel for valkeySentinel, redis.mode for an external service, else standalone.
+*/}}
+{{- define "opsie.redisMode" -}}
+{{- if (.Values.valkeySentinel | default dict).enabled }}sentinel
+{{- else if .Values.redis.enabled }}{{ .Values.redis.mode | default "standalone" }}
+{{- else }}standalone
+{{- end }}
+{{- end }}
+
+{{/*
+REDIS_ADDR: the external address, the Sentinel Service on 26379, or the sub-chart Service on 6379. The one place it is built.
 */}}
 {{- define "opsie.redisAddr" -}}
 {{- if .Values.redis.enabled }}
 {{- .Values.redis.addr }}
+{{- else if (.Values.valkeySentinel | default dict).enabled }}
+{{- printf "%s-sentinel:26379" (include "opsie.valkeyFullname" .) }}
 {{- else }}
 {{- printf "%s:6379" (include "opsie.valkeyFullname" .) }}
 {{- end }}
@@ -180,11 +204,25 @@ Secret name and key of the Redis password as JSON. Valkey: the key named after t
 {{- if .Values.redis.enabled }}
 {{- dict "name" .Values.redis.existingSecret "key" .Values.redis.existingSecretKey | toJson }}
 {{- else }}
-{{- $v := .Values.valkey | default dict }}
+{{- $v := include "opsie.valkeyValues" . | fromJson }}
 {{- $auth := $v.auth | default dict }}
 {{- $users := $auth.aclUsers | default dict }}
 {{- $default := $users.default | default dict }}
 {{- dict "name" ($auth.usersExistingSecret | default "") "key" ($default.passwordKey | default "default") | toJson }}
+{{- end }}
+{{- end }}
+
+{{/*
+Secret name and key of the Sentinel password as JSON; empty unless the mode is sentinel.
+*/}}
+{{- define "opsie.redisSentinelPasswordSecretRef" -}}
+{{- if .Values.redis.enabled }}
+{{- if eq (include "opsie.redisMode" .) "sentinel" }}
+{{- dict "name" .Values.redis.existingSecret "key" .Values.redis.existingSecretSentinelKey | toJson }}
+{{- end }}
+{{- else if (.Values.valkeySentinel | default dict).enabled }}
+{{- $sentinel := .Values.valkeySentinel.sentinel | default dict }}
+{{- dict "name" ($sentinel.existingSecret | default "") "key" ($sentinel.passwordKey | default "sentinel") | toJson }}
 {{- end }}
 {{- end }}
 
@@ -263,7 +301,7 @@ Non-secret environment shared by every part; the ConfigMap data, and the input o
 DB_TYPE: {{ .Values.database.type | quote }}
 USE_REDIS: "true"
 REDIS_ADDR: {{ include "opsie.redisAddr" . | quote }}
-REDIS_DB: {{ .Values.redis.db | default 0 | int | toString | quote }}
+REDIS_MODE: {{ include "opsie.redisMode" . | quote }}
 {{- if or (not .Values.alertEvents.enabled) (not .Values.sse.enabled) }}
 ALERT_EVENTS_DISABLED: "true"
 {{- end }}
@@ -315,6 +353,15 @@ Input: dict "root" . "part" "app".
     secretKeyRef:
       name: {{ $pw.name }}
       key: {{ $pw.key }}
+{{- $spw := include "opsie.redisSentinelPasswordSecretRef" $root }}
+{{- if $spw }}
+{{- $spw = $spw | fromJson }}
+- name: REDIS_SENTINEL_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $spw.name }}
+      key: {{ $spw.key }}
+{{- end }}
 {{- if eq $part "ingest" }}
 - name: MODULES
   value: ingestion
@@ -364,6 +411,10 @@ Input: dict "root" . "part" "app".
 {{- if $v.auth.sessionCacheTtl }}
 - name: SESSION_CACHE_TTL
   value: {{ $v.auth.sessionCacheTtl | quote }}
+{{- end }}
+{{- if $v.auth.sessionCacheStaleGrace }}
+- name: SESSION_CACHE_STALE_GRACE
+  value: {{ $v.auth.sessionCacheStaleGrace | quote }}
 {{- end }}
 {{- if not $v.sse.enabled }}
 - name: SSE_DISABLED

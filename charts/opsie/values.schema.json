@@ -86,15 +86,29 @@
       "type": "object",
       "additionalProperties": true
     },
+    "valkeySentinel": {
+      "type": "object",
+      "additionalProperties": true
+    },
     "redis": {
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
+        "mode": { "type": "string", "enum": ["standalone", "sentinel"] },
         "addr": { "type": "string" },
         "existingSecret": { "type": "string" },
-        "existingSecretKey": { "type": "string" }
+        "existingSecretKey": { "type": "string" },
+        "existingSecretSentinelKey": { "type": "string" }
       }
     },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "sessionCacheTtl": { "type": "string" },
+        "sessionCacheStaleGrace": { "type": "string" }
+      }
+    },
+    "terminationGracePeriodSeconds": { "type": "integer", "minimum": 1 },
     "tls": {
       "type": "object",
       "properties": {

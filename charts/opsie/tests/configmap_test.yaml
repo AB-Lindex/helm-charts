@@ -15,10 +15,10 @@ tests:
             DB_TYPE: mssql
             USE_REDIS: "true"
             REDIS_ADDR: RELEASE-NAME-valkey:6379
-            REDIS_DB: "0"
+            REDIS_MODE: standalone
             INTERNAL_PORT: "8090"
 
-  - it: uses the external Redis address and database
+  - it: uses the external Redis address and never renders REDIS_DB
     set:
       valkey.enabled: false
       redis.enabled: true
@@ -30,8 +30,10 @@ tests:
           path: data.REDIS_ADDR
           value: redis.example:6380
       - equal:
+          path: data.REDIS_MODE
+          value: standalone
+      - notExists:
           path: data.REDIS_DB
-          value: "3"
 
   - it: sets the alert settings only when given
     set:

@@ -4,7 +4,7 @@ description: A Helm chart for Opsie, the on-call and alert management platform (
 
 type: application
 
-version: 0.6.0
+version: 0.7.0
 appVersion: "v0.19"
 
 kubeVersion: ">=1.32.0-0"
@@ -16,6 +16,11 @@ sources:
 
 dependencies:
   - name: valkey
-    version: 0.12.0
+    version: 1.0.0-rc.1
     repository: https://valkey.io/valkey-helm/
     condition: valkey.enabled
+  - name: valkey
+    alias: valkeySentinel
+    version: 1.0.0-rc.1
+    repository: https://valkey.io/valkey-helm/
+    condition: valkeySentinel.enabled

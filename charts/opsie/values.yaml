@@ -91,6 +91,9 @@ strategy:
     maxSurge: 1
     maxUnavailable: 0
 
+# -- terminationGracePeriodSeconds of every part's pods; the application's own shutdown timeout is 120 s.
+terminationGracePeriodSeconds: 130
+
 podDisruptionBudget:
   # -- auto | true | false. auto renders a budget only for parts with 2 or more replicas.
   enabled: auto
@@ -151,31 +154,101 @@ database:
       # -- Annotations on the migration service account.
       annotations: {}
 
-# -- Valkey sub-chart (upstream valkey-io/valkey-helm). Valkey is required: set valkey.enabled or redis.enabled, never both and never neither.
+# -- Valkey, standalone (upstream valkey-io/valkey-helm, one pod, no volume). Valkey is required: set exactly one of valkey.enabled, valkeySentinel.enabled and redis.enabled.
+# A restart of this pod signs every user out; valkeySentinel.enabled keeps the sessions through a restart.
 # Everything not listed here is passed through to the sub-chart.
 valkey:
   enabled: false
+  # RollingUpdate is safe without a volume and keeps the old pod serving until the new one is ready.
+  deploymentStrategy: RollingUpdate
   auth:
     # -- The chart refuses to render with it off; Opsie does not run Valkey without a password.
     enabled: true
-    # -- Required: existing Secret; the key named after the user holds the password (user default: key default).
-    usersExistingSecret: ""
+    # -- Existing Secret; the key named after the user holds the password (user default: key default).
+    usersExistingSecret: opsie-valkey
     aclUsers:
       default:
         permissions: "~* &* +@all"
   # fullnameOverride: opsie-valkey   # pins the Service name when the release is not called opsie
 
-# -- External Valkey-compatible service (Valkey or Redis with pub/sub; not Microsoft Garnet), used when valkey.enabled is false.
+# -- Valkey with replication and Sentinel (the same upstream chart under another alias): three Valkey pods with a small volume each, three Sentinels, a PodDisruptionBudget for each.
+# Opsie finds the primary through the Sentinel Service. The Secret needs the keys default, replication-user and sentinel (three different passwords).
+# Switching from valkey.enabled to valkeySentinel.enabled needs no other setting. Everything not listed here is passed through to the sub-chart.
+valkeySentinel:
+  enabled: false
+  # The alias would otherwise name every resource after valkeySentinel; this keeps the names of valkey.enabled.
+  nameOverride: valkey
+  replica:
+    enabled: true
+    replicas: 3
+    replicationUser: replication-user
+  sentinel:
+    enabled: true
+    replicas: 3
+    quorum: 2
+    downAfterMilliseconds: 5000
+    preStopFailover: true
+    # Secret holding the Sentinel password under passwordKey.
+    existingSecret: opsie-valkey
+    passwordKey: sentinel
+    podDisruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+    # The selector omits the release name: the sub-chart does not template these values. It matches this namespace only.
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: valkey-sentinel
+  persistence:
+    enabled: true
+    size: 100Mi
+    # Empty uses the cluster's default storage class.
+    storageClass: ""
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: valkey
+  readinessProbe:
+    enabled: true
+  haproxy:
+    enabled: false
+  networkPolicy:
+    enabled: false
+  metrics:
+    enabled: false
+  auth:
+    enabled: true
+    usersExistingSecret: opsie-valkey
+    aclUsers:
+      default:
+        permissions: "~* &* +@all"
+      replication-user:
+        # Replication and failover, see the sub-chart's sentinel.monitorUser.
+        permissions: "~* &* +multi +exec +ping +info +role +subscribe +publish +slaveof +replicaof +config|rewrite +client +failover +script|kill +psync +replconf"
+  # fullnameOverride: opsie-valkey   # pins the Service names when the release is not called opsie
+
+# -- External Valkey-compatible service (Valkey or Redis with pub/sub; not Microsoft Garnet), used when neither valkey.enabled nor valkeySentinel.enabled is set.
 redis:
   enabled: false
-  # -- host:port of the service.
+  # -- standalone | sentinel.
+  mode: standalone
+  # -- host:port of the server. In sentinel mode a comma separated list of Sentinel addresses.
   addr: ""
-  # -- Database number.
-  db: 0
-  # -- Required: existing Secret holding the password.
+  # -- Required: existing Secret holding the Valkey password (user default).
   existingSecret: ""
   # -- Key in the Secret.
   existingSecretKey: password
+  # -- Key in the same Secret holding the Sentinel password (user sentinel); needed in sentinel mode.
+  existingSecretSentinelKey: sentinel
 
 auth:
   jwt:
@@ -190,8 +263,10 @@ auth:
     existingSecret: ""
     # -- OIDC scopes.
     scopes: openid,profile,email
-  # -- SESSION_CACHE_TTL for parts that run api, a duration of at most 30s. Empty leaves the application default.
+  # -- SESSION_CACHE_TTL for parts that run api, a duration of at most 30s. Empty leaves the application default (15s; 0 switches the cache off).
   sessionCacheTtl: ""
+  # -- SESSION_CACHE_STALE_GRACE for parts that run api, a duration of at most 15s: how long past the TTL a cached session is served while Valkey is unreachable. Empty leaves the application default (15s; 0 disables it).
+  sessionCacheStaleGrace: ""
   adminEmail:
     # -- Existing ConfigMap holding the admin email file, mounted at /app/config/admin.
     existingConfigMap: ""
@@ -396,10 +471,12 @@ extraObjects: []
   # - apiVersion: v1
   #   kind: Secret
   #   metadata:
-  #     name: opsie-valkey                 # valkey.auth.usersExistingSecret (sub-chart); the key is the ACL user name
+  #     name: opsie-valkey                 # valkey.auth.usersExistingSecret or valkeySentinel.auth.usersExistingSecret (sub-chart); the key is the ACL user name
   #   type: Opaque
   #   stringData:
   #     default: CHANGE-ME
+  #     replication-user: CHANGE-ME-too    # valkeySentinel only; a different password
+  #     sentinel: CHANGE-ME-as-well        # valkeySentinel only: the Sentinel password, again different
   # - apiVersion: v1
   #   kind: Secret
   #   metadata:

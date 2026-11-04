@@ -56,7 +56,7 @@ tests:
       valkey.enabled: false
     asserts:
       - failedTemplate:
-          errorPattern: 'No Valkey source is selected \(valkey\.enabled, redis\.enabled\)\. Set valkey\.enabled=true'
+          errorPattern: 'No Valkey source is selected \(valkey\.enabled, valkeySentinel\.enabled, redis\.enabled\)\. Set valkey\.enabled=true'
 
   - it: V06 still reports no Valkey source in split topologies with alertEvents.enabled true or false
     set:
@@ -85,7 +85,7 @@ tests:
       redis.existingSecret: opsie-redis
     asserts:
       - failedTemplate:
-          errorPattern: 'Two Valkey sources are selected'
+          errorPattern: 'More than one Valkey source is selected'
 
   - it: V07 reports two Valkey sources
     set:
@@ -94,7 +94,7 @@ tests:
       redis.existingSecret: opsie-redis
     asserts:
       - failedTemplate:
-          errorPattern: 'Two Valkey sources are selected \(valkey\.enabled, redis\.enabled\)\.'
+          errorPattern: 'More than one Valkey source is selected \(valkey\.enabled, valkeySentinel\.enabled, redis\.enabled\)\.'
 
   - it: V08 reports redis.enabled without addr
     set:
@@ -127,6 +127,58 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'Valkey authentication is switched off \(valkey\.auth\.enabled\)\.'
+
+  - it: V07 reports two sources when valkey and valkeySentinel are both enabled
+    set:
+      valkeySentinel.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'More than one Valkey source is selected'
+
+  - it: V07 reports three sources
+    set:
+      valkeySentinel.enabled: true
+      redis.enabled: true
+      redis.addr: redis:6379
+      redis.existingSecret: opsie-redis
+    asserts:
+      - failedTemplate:
+          errorPattern: 'More than one Valkey source is selected'
+
+  - it: V06 reports zero sources with valkeySentinel disabled
+    set:
+      valkey.enabled: false
+      valkeySentinel.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No Valkey source is selected'
+
+  - it: V09 reports valkeySentinel.enabled without a Sentinel Secret
+    set:
+      valkey.enabled: false
+      valkeySentinel.enabled: true
+      valkeySentinel.sentinel.existingSecret: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'valkeySentinel\.enabled is true without a Sentinel password Secret \(valkeySentinel\.sentinel\.existingSecret\)\.'
+
+  - it: V09 reports valkeySentinel.enabled without a user Secret
+    set:
+      valkey.enabled: false
+      valkeySentinel.enabled: true
+      valkeySentinel.auth.usersExistingSecret: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'valkeySentinel\.enabled is true without a password Secret \(valkeySentinel\.auth\.usersExistingSecret\)\.'
+
+  - it: V09 reports valkeySentinel authentication switched off
+    set:
+      valkey.enabled: false
+      valkeySentinel.enabled: true
+      valkeySentinel.auth.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: 'Valkey authentication is switched off \(valkeySentinel\.auth\.enabled\)\.'
 
   - it: V10 reports processor values outside split-all
     set:

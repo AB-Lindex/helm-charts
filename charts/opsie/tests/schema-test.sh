@@ -78,7 +78,7 @@ else
 fi
 
 cp -r "$CHART" "$TMP/chart-copy"
-sed -i 's/^    version: 0.12.0/    version: 0.11.0/' "$TMP/chart-copy/Chart.yaml"
+sed -i 's/^    version: 1.0.0-rc.1/    version: 0.12.1/' "$TMP/chart-copy/Chart.yaml"
 if helm dependency build "$TMP/chart-copy" >/dev/null 2>&1; then
   fail "scaffold-lock-out-of-sync-fails" "dependency build succeeded with a stale Chart.lock"
 else
@@ -103,7 +103,14 @@ expect_fail "schema-ingress-without-name" "name" -f "$FIXTURE" --set 'ingresses[
 expect_fail "schema-httproute-without-parentrefs" "parentRefs" -f "$FIXTURE" --set 'httpRoutes[0].name=a'
 expect_ok "schema-pdb-enabled-true" -f "$FIXTURE" --set podDisruptionBudget.enabled=true
 expect_ok "schema-pdb-enabled-false" -f "$FIXTURE" --set podDisruptionBudget.enabled=false
-expect_ok "schema-valkey-passthrough" -f "$FIXTURE" --set valkey.dataStorage.enabled=true
+expect_ok "schema-valkey-passthrough" -f "$FIXTURE" --set valkey.persistence.enabled=true --set valkey.persistence.size=1Gi
+expect_ok "schema-valkey-sentinel-values" -f "$CHART/ci/sentinel-values.yaml"
+expect_ok "schema-valkey-sentinel-passthrough" -f "$CHART/ci/sentinel-values.yaml" --set valkeySentinel.persistence.size=1Gi
+expect_ok "schema-redis-sentinel-mode" -f "$FIXTURE" --set valkey.enabled=false --set redis.enabled=true --set redis.mode=sentinel --set redis.addr=s1:26379 --set redis.existingSecret=opsie-redis
+expect_fail "schema-redis-mode-cluster" "redis/mode" -f "$FIXTURE" --set valkey.enabled=false --set redis.enabled=true --set redis.mode=cluster --set redis.addr=r:6379 --set redis.existingSecret=opsie-redis
+expect_fail "schema-termination-grace-zero" "terminationGracePeriodSeconds" -f "$FIXTURE" --set terminationGracePeriodSeconds=0
+expect_fail "schema-two-valkey-sources" "More than one Valkey source" -f "$FIXTURE" --set valkeySentinel.enabled=true
+expect_ok "schema-redis-db-ignored" -f "$FIXTURE" --set redis.db=3
 expect_ok "sse-caps-valid" -f "$FIXTURE" --set sse.maxConnectionsPerUser=5 --set sse.maxConnections=500
 expect_ok "sse-disabled-valid" -f "$FIXTURE" --set sse.enabled=false
 expect_fail "sse-enabled-maybe" "sse/enabled" -f "$FIXTURE" --set sse.enabled=maybe

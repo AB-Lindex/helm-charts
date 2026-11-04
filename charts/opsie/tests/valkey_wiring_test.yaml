@@ -52,7 +52,7 @@ tests:
           value: x:6379
         template: templates/configmap.yaml
 
-  - it: an external Redis uses its address, database and Secret key
+  - it: an external Redis uses its address and Secret key and ignores redis.db
     set:
       valkey.enabled: false
       redis.enabled: true
@@ -65,9 +65,8 @@ tests:
           path: data.REDIS_ADDR
           value: redis.example:6379
         template: templates/configmap.yaml
-      - equal:
+      - notExists:
           path: data.REDIS_DB
-          value: "2"
         template: templates/configmap.yaml
       - contains:
           path: spec.template.spec.containers[0].env

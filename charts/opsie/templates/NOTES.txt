@@ -22,5 +22,9 @@ No ingresses or httpRoutes are configured. To reach the UI:
 
 Email integration: opsie-email reads its routes from http://{{ include "opsie.nameWith" (dict "root" . "suffix" "internal") }}:{{ .Values.internal.port }}/api/internal/mail-routes. Its release must reference the Secret {{ .Values.email.existingSecret }} in this namespace.
 {{- end }}
+{{- if .Values.valkey.enabled }}
+
+Valkey runs as a single pod without a volume. When it restarts, every user is signed out. Set valkeySentinel.enabled=true (and valkey.enabled=false) to keep the sessions through a Valkey restart; the Secret {{ (.Values.valkeySentinel.sentinel).existingSecret }} then needs the keys default, replication-user and sentinel.
+{{- end }}
 
 Changing an existing Secret or ConfigMap that the chart only references does not restart the pods. Restart the Deployments after such a change.

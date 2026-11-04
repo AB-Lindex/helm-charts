@@ -1,0 +1,281 @@
+suite: valkey sentinel
+templates:
+  - templates/configmap.yaml
+  - templates/deployment.yaml
+  - charts/valkeySentinel/templates/statefulset.yaml
+  - charts/valkeySentinel/templates/sentinel-statefulset.yaml
+  - charts/valkeySentinel/templates/poddisruptionbudget.yaml
+  - charts/valkeySentinel/templates/sentinel-pdb.yaml
+  - charts/valkeySentinel/templates/service.yaml
+  - charts/valkeySentinel/templates/deploy_valkey.yaml
+  - charts/valkeySentinel/templates/secret.yaml
+  - charts/valkeySentinel/templates/init_config.yaml
+  - charts/valkeySentinel/templates/configmap.yaml
+  - charts/valkeySentinel/templates/sentinel-configmap.yaml
+values:
+  - ../ci/sentinel-values.yaml
+release:
+  name: opsie
+tests:
+  - it: Opsie runs in sentinel mode against the Sentinel Service
+    asserts:
+      - equal:
+          path: data.REDIS_MODE
+          value: sentinel
+        template: templates/configmap.yaml
+      - equal:
+          path: data.REDIS_ADDR
+          value: opsie-valkey-sentinel:26379
+        template: templates/configmap.yaml
+      - notExists:
+          path: data.REDIS_DB
+        template: templates/configmap.yaml
+
+  - it: the Valkey password comes from key default and the Sentinel password from key sentinel
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opsie-valkey
+                key: default
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_SENTINEL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opsie-valkey
+                key: sentinel
+        template: templates/deployment.yaml
+
+  - it: no password reaches the ConfigMap
+    asserts:
+      - notExists:
+          path: data.REDIS_PASSWORD
+        template: templates/configmap.yaml
+      - notExists:
+          path: data.REDIS_SENTINEL_PASSWORD
+        template: templates/configmap.yaml
+
+  - it: three Valkey pods get a 100Mi volume on the default storage class
+    asserts:
+      - isKind:
+          of: StatefulSet
+        template: charts/valkeySentinel/templates/statefulset.yaml
+      - equal:
+          path: metadata.name
+          value: opsie-valkey
+        template: charts/valkeySentinel/templates/statefulset.yaml
+      - equal:
+          path: spec.replicas
+          value: 3
+        template: charts/valkeySentinel/templates/statefulset.yaml
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 100Mi
+        template: charts/valkeySentinel/templates/statefulset.yaml
+      - notExists:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+        template: charts/valkeySentinel/templates/statefulset.yaml
+
+  - it: three Sentinels with a PodDisruptionBudget each
+    asserts:
+      - equal:
+          path: metadata.name
+          value: opsie-valkey-sentinel
+        template: charts/valkeySentinel/templates/sentinel-statefulset.yaml
+      - equal:
+          path: spec.replicas
+          value: 3
+        template: charts/valkeySentinel/templates/sentinel-statefulset.yaml
+      - equal:
+          path: metadata.name
+          value: opsie-valkey
+        template: charts/valkeySentinel/templates/poddisruptionbudget.yaml
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+        template: charts/valkeySentinel/templates/poddisruptionbudget.yaml
+      - equal:
+          path: metadata.name
+          value: opsie-valkey-sentinel
+        template: charts/valkeySentinel/templates/sentinel-pdb.yaml
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+        template: charts/valkeySentinel/templates/sentinel-pdb.yaml
+
+  - it: the alias keeps the names of valkey.enabled, renders no Deployment and no Secret
+    asserts:
+      - isKind:
+          of: Service
+        template: charts/valkeySentinel/templates/service.yaml
+      - equal:
+          path: metadata.name
+          value: opsie-valkey
+        template: charts/valkeySentinel/templates/service.yaml
+      - notExists:
+          path: spec.clusterIP
+        template: charts/valkeySentinel/templates/service.yaml
+      - hasDocuments:
+          count: 0
+        template: charts/valkeySentinel/templates/secret.yaml
+      - hasDocuments:
+          count: 0
+        template: charts/valkeySentinel/templates/deploy_valkey.yaml
+
+  - it: valkeySentinel.fullnameOverride gives the address
+    set:
+      valkeySentinel.fullnameOverride: x
+    asserts:
+      - equal:
+          path: data.REDIS_ADDR
+          value: x-sentinel:26379
+        template: templates/configmap.yaml
+
+  - it: the Sentinel password key is configurable
+    set:
+      valkeySentinel.sentinel.passwordKey: sp
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_SENTINEL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opsie-valkey
+                key: sp
+        template: templates/deployment.yaml
+
+  - it: switching from valkey.enabled changes no value besides the switches
+    values:
+      - ../ci/all-in-one-values.yaml
+    set:
+      valkey.enabled: false
+      valkeySentinel.enabled: true
+    asserts:
+      - equal:
+          path: data.REDIS_MODE
+          value: sentinel
+        template: templates/configmap.yaml
+      - equal:
+          path: data.REDIS_ADDR
+          value: opsie-valkey-sentinel:26379
+        template: templates/configmap.yaml
+      - isKind:
+          of: StatefulSet
+        template: charts/valkeySentinel/templates/statefulset.yaml
+
+  - it: an external Redis in sentinel mode takes the list and the Sentinel key
+    set:
+      valkeySentinel.enabled: false
+      redis.enabled: true
+      redis.mode: sentinel
+      redis.addr: s1:26379,s2:26379,s3:26379
+      redis.existingSecret: opsie-redis
+    asserts:
+      - equal:
+          path: data.REDIS_MODE
+          value: sentinel
+        template: templates/configmap.yaml
+      - equal:
+          path: data.REDIS_ADDR
+          value: s1:26379,s2:26379,s3:26379
+        template: templates/configmap.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_SENTINEL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opsie-redis
+                key: sentinel
+        template: templates/deployment.yaml
+
+  - it: an external standalone Redis gets no Sentinel password
+    set:
+      valkeySentinel.enabled: false
+      redis.enabled: true
+      redis.addr: redis:6379
+      redis.existingSecret: opsie-redis
+    asserts:
+      - equal:
+          path: data.REDIS_MODE
+          value: standalone
+        template: templates/configmap.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_SENTINEL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opsie-redis
+                key: sentinel
+        template: templates/deployment.yaml
+---
+suite: valkey standalone sub-chart
+templates:
+  - templates/configmap.yaml
+  - templates/deployment.yaml
+  - charts/valkey/templates/deploy_valkey.yaml
+  - charts/valkey/templates/statefulset.yaml
+  - charts/valkey/templates/service.yaml
+  - charts/valkey/templates/secret.yaml
+  - charts/valkey/templates/pvc.yaml
+  - charts/valkey/templates/init_config.yaml
+  - charts/valkey/templates/configmap.yaml
+values:
+  - ../ci/all-in-one-values.yaml
+release:
+  name: opsie
+tests:
+  - it: standalone mode, no Sentinel password
+    asserts:
+      - equal:
+          path: data.REDIS_MODE
+          value: standalone
+        template: templates/configmap.yaml
+      - equal:
+          path: data.REDIS_ADDR
+          value: opsie-valkey:6379
+        template: templates/configmap.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_SENTINEL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opsie-valkey
+                key: sentinel
+        template: templates/deployment.yaml
+
+  - it: one Deployment without a volume, and no Secret
+    asserts:
+      - isKind:
+          of: Deployment
+        template: charts/valkey/templates/deploy_valkey.yaml
+      - equal:
+          path: metadata.name
+          value: opsie-valkey
+        template: charts/valkey/templates/deploy_valkey.yaml
+      - equal:
+          path: spec.strategy.type
+          value: RollingUpdate
+        template: charts/valkey/templates/deploy_valkey.yaml
+      - hasDocuments:
+          count: 0
+        template: charts/valkey/templates/statefulset.yaml
+      - hasDocuments:
+          count: 0
+        template: charts/valkey/templates/pvc.yaml
+      - hasDocuments:
+          count: 0
+        template: charts/valkey/templates/secret.yaml
+      - equal:
+          path: metadata.name
+          value: opsie-valkey
+        template: charts/valkey/templates/service.yaml

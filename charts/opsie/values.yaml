@@ -132,6 +132,8 @@ database:
     backoffLimit: 1
     # -- hook mode: Job activeDeadlineSeconds.
     activeDeadlineSeconds: 600
+    # -- hook mode: Job ttlSecondsAfterFinished, removes the finished Job and its pod. null keeps them until the next hook run.
+    ttlSecondsAfterFinished: 3600
     # -- Resources of the migration container.
     resources: {}
     # -- Extra annotations on the hook Job, for example argocd.argoproj.io/hook: PreSync. They win over the Helm hook annotations.

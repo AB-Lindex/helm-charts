@@ -32,6 +32,9 @@ metadata:
 spec:
   backoffLimit: {{ $m.backoffLimit }}
   activeDeadlineSeconds: {{ $m.activeDeadlineSeconds }}
+  {{- if not (kindIs "invalid" $m.ttlSecondsAfterFinished) }}
+  ttlSecondsAfterFinished: {{ $m.ttlSecondsAfterFinished }}
+  {{- end }}
   template:
     metadata:
       labels:

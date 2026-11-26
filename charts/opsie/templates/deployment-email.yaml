@@ -48,7 +48,11 @@ spec:
       containers:
         - name: opsie-email
           image: {{ include "opsie.emailImage" . | quote }}
-          imagePullPolicy: {{ $e.image.pullPolicy }}
+          imagePullPolicy: {{ default .Values.image.pullPolicy $e.image.pullPolicy }}
+          {{- if include "opsie.emailSharedImage" . }}
+          command:
+            - /app/opsie-email
+          {{- end }}
           ports:
             - name: smtp
               containerPort: 2525

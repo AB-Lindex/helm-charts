@@ -77,7 +77,7 @@ A changed existing Secret or ConfigMap does not restart the pods, because the ch
 
 ## Image
 
-The public image address is not decided yet. `image.repository` is `TBD` and `image.tag` is `v0`, and rendering fails while the repository is `TBD`. Set both in your values file. An empty `image.tag` falls back to the chart `appVersion` (`v0`). The same image and tag run in every part and in the migration step.
+The public image address is not decided yet. `image.repository` is `TBD` and `image.tag` is `v0`, and rendering fails while the repository is `TBD`. Set both in your values file. An empty `image.tag` falls back to the chart `appVersion` (`v0`). The same image and tag run in every part, in the migration step and, with `email.enabled`, in opsie-email (`email.image` overrides that).
 
 ## Topologies
 
@@ -237,16 +237,13 @@ Upgrading from chart 0.3.x: `metrics.port` (`METRICS_PORT`) was removed and rend
 
 `email.enabled: true` switches on the email integration: Opsie accepts mail envelopes, and the chart deploys [opsie-email](https://github.com/AB-Lindex/opsie-email) next to it. opsie-email is the SMTP front end: it accepts mail for `alerts+<integration key>@<domain>`, forwards it to Opsie as an alert envelope, stores attachments in blob storage and serves them back to Opsie. It replaces the former `opsie-email` chart, which is deprecated; see [the migration guide](../../docs/migrating-opsie-email.md).
 
-A minimal setup on Azure with workload identity:
+opsie-email runs from the same image and tag as Opsie, so both always have the same version. A minimal setup on Azure with workload identity:
 
 ```yaml
 email:
   enabled: true
   domain: mail.example.com
   existingSecret: opsie-email-shared
-  image:
-    repository: registry.example/opsie-email
-    tag: v1.2.3
   blob:
     azure:
       container: attachments
@@ -264,7 +261,7 @@ email:
 | `email.enabled` | Switches the integration on (default `false`) |
 | `email.domain` | `EMAIL_DOMAIN`: recipients are `alerts+<integration key>@<domain>`; also the default of `email.smtp.acceptDomains` |
 | `email.existingSecret` | The Secret read by Opsie and by opsie-email, see below |
-| `email.image.*` | `repository`, `tag` (required, no `appVersion` fallback) and `pullPolicy` of opsie-email; the pull secrets are `image.pullSecrets` |
+| `email.image.*` | Empty by default: opsie-email runs from the Opsie image (`image.repository` and `image.tag`, binary `/app/opsie-email`, which the chart sets as the command). Set `email.image.repository` and `email.image.tag` to run another image, for example the former standalone opsie-email image, which keeps its own entrypoint. `email.image.pullPolicy` falls back to `image.pullPolicy`; the pull secrets are `image.pullSecrets` |
 | `email.replicaCount`, `email.resources`, `email.nodeSelector`, `email.tolerations`, `email.affinity`, `email.topologySpreadConstraints` | Scheduling of opsie-email. Without `email.topologySpreadConstraints` it uses `topologySpread.constraints` |
 | `email.logLevel`, `email.forwardTimeout`, `email.routes.*`, `email.smtp.*` | opsie-email settings; an empty value keeps the application default |
 | `email.blob.*` | Attachment storage, see below |

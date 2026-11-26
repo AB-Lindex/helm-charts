@@ -23,9 +23,6 @@ email:
   enabled: true
   domain: mail.example.com
   existingSecret: opsie-email-shared
-  image:
-    repository: example.invalid/opsie-email
-    tag: v0.0.0-test
   blob:
     provider: s3
     s3:

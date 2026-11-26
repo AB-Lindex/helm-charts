@@ -39,17 +39,25 @@ tests:
           path: spec.replicas
           value: 2
 
-  - it: runs the opsie-email image under the shared ServiceAccount and pull secrets
+  - it: runs from the Opsie image with the opsie-email command, the shared ServiceAccount and pull secrets
     template: templates/deployment-email.yaml
     set:
       serviceAccount.create: false
       serviceAccount.name: opsie
+      image.pullPolicy: Always
       image.pullSecrets:
         - name: dockerkey
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: example.invalid/opsie-email:v0.0.0-test
+          value: example.invalid/opsie:v0.0.0-test
+      - equal:
+          path: spec.template.spec.containers[0].command
+          value:
+            - /app/opsie-email
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
       - equal:
           path: spec.template.spec.serviceAccountName
           value: opsie
@@ -57,6 +65,22 @@ tests:
           path: spec.template.spec.imagePullSecrets
           value:
             - name: dockerkey
+
+  - it: runs another image with its own entrypoint when email.image.repository is set
+    template: templates/deployment-email.yaml
+    set:
+      email.image.repository: registry.example/opsie-email
+      email.image.tag: v0.3
+      email.image.pullPolicy: Never
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example/opsie-email:v0.3
+      - notExists:
+          path: spec.template.spec.containers[0].command
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Never
 
   - it: runs non-root with a read-only root file system and an emptyDir for /tmp
     template: templates/deployment-email.yaml

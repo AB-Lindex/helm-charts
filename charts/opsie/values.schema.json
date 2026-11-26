@@ -165,7 +165,7 @@
           "properties": {
             "repository": { "type": "string" },
             "tag": { "type": ["string", "number"] },
-            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+            "pullPolicy": { "type": "string", "enum": ["", "Always", "IfNotPresent", "Never"] }
           }
         },
         "replicaCount": { "type": "integer", "minimum": 0 },

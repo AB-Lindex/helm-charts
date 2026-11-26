@@ -340,19 +340,20 @@ metrics:
     labels: {}
 
 email:
-  # -- Enable the email integration: Opsie accepts mail envelopes and the opsie-email Deployment (SMTP front end) is rendered with the release. Needs email.domain, email.existingSecret, email.image and the blob settings.
+  # -- Enable the email integration: Opsie accepts mail envelopes and the opsie-email Deployment (SMTP front end) is rendered with the release. Needs email.domain, email.existingSecret and the blob settings.
   enabled: false
   # -- EMAIL_DOMAIN: the domain of the recipient addresses alerts+<key>@<domain>. Also the default of email.smtp.acceptDomains.
   domain: ""
   # -- Required: one existing Secret in the namespace of the release. Keys: routes-token (required, at least 32 characters), routes-token-next (optional, rotation) and attachments-secret (required, at least 32 characters).
   existingSecret: ""
+  # -- Image of opsie-email. By default it runs from the Opsie image (image.repository and image.tag), which holds the binary /app/opsie-email; the chart then sets the command. Set email.image.repository only to run another image, for example the former standalone opsie-email image (its own entrypoint is used).
   image:
-    # -- Placeholder: the public image address is not known yet. Set it in your values file; rendering fails while it is TBD.
-    repository: TBD
-    # -- Required: opsie-email is versioned on its own, so there is no fallback to the chart appVersion.
+    # -- Empty runs opsie-email from the Opsie image.
+    repository: ""
+    # -- Tag of the override image; required when email.image.repository is set. Ignored otherwise.
     tag: ""
-    # -- Image pull policy of the opsie-email container. The pull secrets are image.pullSecrets.
-    pullPolicy: IfNotPresent
+    # -- Image pull policy of the opsie-email container. Empty uses image.pullPolicy. The pull secrets are image.pullSecrets.
+    pullPolicy: ""
   # -- Replicas of opsie-email. Mail is delivered synchronously and kept in memory only while a session runs, so replicas need no coordination.
   replicaCount: 2
   # -- LOG_LEVEL of opsie-email: trace, debug, info, warn or error.

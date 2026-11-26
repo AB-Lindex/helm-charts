@@ -136,8 +136,20 @@ Name of the opsie-email Deployment and its attachment API Service: <base>-email.
 {{- include "opsie.nameWith" (dict "root" . "suffix" "email") }}
 {{- end }}
 
+{{/*
+True (non-empty output) when opsie-email runs from the image of Opsie (email.image.repository is empty): the binary is
+/app/opsie-email in that image, whose entrypoint is the Opsie server.
+*/}}
+{{- define "opsie.emailSharedImage" -}}
+{{- if not .Values.email.image.repository }}true{{ end }}
+{{- end }}
+
 {{- define "opsie.emailImage" -}}
+{{- if include "opsie.emailSharedImage" . }}
+{{- include "opsie.image" . }}
+{{- else }}
 {{- printf "%s:%s" .Values.email.image.repository (toString .Values.email.image.tag) }}
+{{- end }}
 {{- end }}
 
 {{/*

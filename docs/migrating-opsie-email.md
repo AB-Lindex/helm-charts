@@ -21,6 +21,7 @@ From `opsie` chart 0.8.0 the opsie-email Deployment, its Services and its Networ
 | Charts | `opsie` and `opsie-email`, two releases and two Applications | `opsie` only |
 | Deployment, Services | `opsie-email`, `opsie-email-smtp`, `opsie-email-metrics` | the same names, rendered by the `opsie` chart |
 | Pod labels | `app.kubernetes.io/name: opsie-email`, `app.kubernetes.io/instance: opsie-email` | `app.kubernetes.io/name: opsie`, `app.kubernetes.io/instance: opsie`, `app.kubernetes.io/component: email` |
+| Image | its own image (`lindexacrdev.azurecr.io/techsvc/opsie-email`, `v0.3`) | by default the Opsie image and tag, which also holds `/app/opsie-email`; `email.image` overrides it |
 | Route snapshot URL, intake URL | `routes.url`, `opsie.intakeUrl` | derived from the Services of the release |
 | Attachment API URL in Opsie | `email.attachments.url` | derived: `http://opsie-email:8082` |
 | ServiceAccount | its own `serviceAccount` values (the current values use the existing account `opsie`) | the ServiceAccount of the release (`serviceAccount`, currently `opsie`) |
@@ -32,7 +33,7 @@ The names of the Deployment and the three Services do not change, so the attachm
 
 - **SMTP intake is down** from the moment the old Application is removed until the new pod is ready and the load balancer is back, normally a few minutes. Sending mail servers queue and retry, so mail is delayed, not lost. Do it outside business hours anyway.
 - **The public IP is kept.** It is the Azure public IP resource named in `service.beta.kubernetes.io/azure-pip-name`, which Kubernetes does not delete with the Service. The MX record does not change.
-- **The Opsie pods are not restarted by the chart change.** Rendering the current values with chart 0.8.0 gives identical Opsie resources (including `EMAIL_ATTACHMENT_API_URL`); only the opsie-email resources are added. The pods roll only if you also change `image.tag`.
+- **The Opsie pods are not restarted by the chart change.** Rendering the current values with chart 0.8.1 gives identical Opsie resources (including `EMAIL_ATTACHMENT_API_URL`); only the opsie-email resources are added. The pods roll only if you also change `image.tag`.
 - **No data moves.** Attachments stay in the existing blob container, and the shared Secret `opsie-email` is rendered by the `opsie` Application (`extraObjects`) and is not touched.
 - **No new federated credential.** opsie-email already runs as the ServiceAccount `opsie`, which is also the account of Opsie, so the subject `system:serviceaccount:techsvc:opsie` is unchanged.
 
@@ -41,7 +42,7 @@ The names of the Deployment and the three Services do not change, so the attachm
 | opsie-email chart | `opsie` chart | Note |
 | --- | --- | --- |
 | `fullnameOverride: opsie-email` | remove | The name is `<base>-email`, `opsie-email` with `fullnameOverride: opsie` |
-| `image.repository`, `image.tag`, `image.pullPolicy` | `email.image.repository`, `email.image.tag`, `email.image.pullPolicy` | The tag is required; there is no `appVersion` fallback |
+| `image.repository`, `image.tag`, `image.pullPolicy` | omit, or `email.image.repository`, `email.image.tag`, `email.image.pullPolicy` | Omitted: opsie-email runs from the Opsie image and tag and the chart sets the command `/app/opsie-email`. With `email.image.repository` the image is used as is, with its own entrypoint, and the tag is required |
 | `image.pullSecrets` | `image.pullSecrets` | Shared with Opsie; the current values already list `dockerkey` in both |
 | `existingSecret` | `email.existingSecret` | Already set in the Opsie values, same Secret |
 | `replicaCount` | `email.replicaCount` | |
@@ -73,7 +74,7 @@ The `valuesObject` of the `opsie` Application changes as follows. The change is 
           existingSecret: opsie-email          # unchanged
           networkPolicy:
             enabled: false                     # unchanged
-          image:                               # new, from the opsie-email Application
+          image:                               # new, step 1 only: the image of the old Application
             repository: lindexacrdev.azurecr.io/techsvc/opsie-email
             tag: v0.3
           replicaCount: 1                      # new
@@ -97,9 +98,15 @@ The `valuesObject` of the `opsie` Application changes as follows. The change is 
 | `<resource group>` | `aks-cloud1-dev-rg` | `aks-atlas-rg` |
 | `<public IP name>` | `cloud1-dev-opsie-email-ip` | `atlas-opsie-email-ip` |
 
+Migrate with the `email.image` override above, so that only the chart changes and opsie-email stays on the version it runs today. Once the migration is verified, move to the common image as a second, separate change:
+
+1. Check that the Opsie image you run contains the binary: `docker run --rm --entrypoint ls <image.repository>:<image.tag> -l /app/opsie-email`. Only images built from a Dockerfile with the `email-builder` stage have it.
+2. Remove the whole `email.image` block. opsie-email now runs from `image.repository` and `image.tag` with the command `/app/opsie-email`, and always has the same version as Opsie. The pods roll once.
+3. Repeat the verification, including the test mail with an attachment. The monorepo build of opsie-email can differ from the standalone `v0.3`.
+
 `email.smtp.acceptDomains` is no longer needed: its old value was the email domain, which is now the default. Set it only when opsie-email must accept more domains.
 
-Also change `metadata.labels.version` and `spec.source.targetRevision` of the `opsie` Application from `v0.7.1` to `v0.8.0`.
+Also change `metadata.labels.version` and `spec.source.targetRevision` of the `opsie` Application from `v0.7.1` to `v0.8.1`.
 
 The values of opsie-email, the Application `opsie-email` and its `targetRevision: v0.1.0` are not needed after the migration.
 
@@ -107,11 +114,11 @@ The values of opsie-email, the Application `opsie-email` and its `targetRevision
 
 Do the steps for dev first, check it, then repeat for prod.
 
-1. **Prepare.** Check that chart 0.8.0 of `opsie` is published in the Helm repository (`helm search repo ab-lindex/opsie --versions`). Prepare the change of the `opsie` Application from the section above, but do not sync it. If the Application is defined in a GitOps repository, keep the change on a branch.
+1. **Prepare.** Check that chart 0.8.1 of `opsie` is published in the Helm repository (`helm search repo ab-lindex/opsie --versions`). Prepare the change of the `opsie` Application from the section above, but do not sync it. If the Application is defined in a GitOps repository, keep the change on a branch.
 2. **Render before you apply.** With the new `valuesObject` extracted to a file, check the result:
 
    ```sh
-   helm template opsie ab-lindex/opsie --version 0.8.0 --namespace techsvc -f new-values.yaml \
+   helm template opsie ab-lindex/opsie --version 0.8.1 --namespace techsvc -f new-values.yaml \
      --api-versions apps/v1/Deployment --api-versions gateway.networking.k8s.io/v1 >/dev/null
    ```
 

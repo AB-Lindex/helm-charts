@@ -202,11 +202,8 @@ Included from templates/configmap.yaml, which always renders.
 {{- if not $e.existingSecret }}
 {{- $errs = append $errs "email.enabled is true without a Secret (email.existingSecret). Set it to an existing Secret with the keys routes-token and attachments-secret." }}
 {{- end }}
-{{- if or (not $e.image.repository) (eq (toString $e.image.repository) "TBD") }}
-{{- $errs = append $errs (printf "email.image.repository is not set (email.image.repository, currently %q). Set email.image.repository, and email.image.tag, to the opsie-email image you want to run." (toString $e.image.repository)) }}
-{{- end }}
-{{- if not $e.image.tag }}
-{{- $errs = append $errs "email.image.tag is not set (email.image.tag). opsie-email is versioned on its own; set the tag of the image you want to run." }}
+{{- if and $e.image.repository (not $e.image.tag) }}
+{{- $errs = append $errs "email.image.repository is set without a tag (email.image.tag). Set the tag of the opsie-email image, or empty email.image.repository to run opsie-email from the Opsie image." }}
 {{- end }}
 {{- if and $e.networkPolicy.enabled $v.metrics.serviceMonitor.enabled (not $e.networkPolicy.metricsPeers) }}
 {{- $errs = append $errs "The ServiceMonitor and the email network policy are both enabled without metrics peers (email.networkPolicy.metricsPeers). The policy would block the scrapes; list the Prometheus pods or namespace, or set email.networkPolicy.enabled=false." }}

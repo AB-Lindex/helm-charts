@@ -444,23 +444,24 @@ tests:
       - failedTemplate:
           errorPattern: 'email\.enabled is true without a Secret \(email\.existingSecret\)\.'
 
-  - it: V23 reports the TBD email image placeholder
+  - it: V23 reports an email image repository without a tag
     values:
       - ../ci/email-values.yaml
     set:
-      email.image.repository: TBD
+      email.image.repository: registry.example/opsie-email
     asserts:
       - failedTemplate:
-          errorPattern: 'email\.image\.repository is not set \(email\.image\.repository, currently "TBD"\)\.'
+          errorPattern: 'email\.image\.repository is set without a tag \(email\.image\.tag\)\.'
 
-  - it: V23 reports a missing email image tag
+  - it: V23 accepts an email image override with a tag
     values:
       - ../ci/email-values.yaml
     set:
-      email.image.tag: ""
+      email.image.repository: registry.example/opsie-email
+      email.image.tag: v0.3
     asserts:
-      - failedTemplate:
-          errorPattern: 'email\.image\.tag is not set \(email\.image\.tag\)\.'
+      - isKind:
+          of: ConfigMap
 
   - it: V23 reports the removed email.attachments.url
     values:

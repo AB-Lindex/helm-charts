@@ -1,10 +1,10 @@
 apiVersion: v2
 name: opsie
-description: A Helm chart for Opsie, the on-call and alert management platform (external MSSQL or PostgreSQL, Valkey required)
+description: A Helm chart for Opsie, the on-call and alert management platform (external MSSQL or PostgreSQL, Valkey required), with the optional opsie-email SMTP front end
 
 type: application
 
-version: 0.7.1
+version: 0.8.0
 appVersion: "v0.37"
 
 kubeVersion: ">=1.32.0-0"

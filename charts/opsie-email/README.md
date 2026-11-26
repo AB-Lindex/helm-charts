@@ -1,5 +1,7 @@
 # opsie-email Helm Chart
 
+> **Deprecated.** opsie-email is part of the [opsie chart](../opsie/README.md#email-integration) from version 0.8.0 (`email.enabled: true`). This chart is no longer developed. Move to the `opsie` chart with the [migration guide](../../docs/migrating-opsie-email.md).
+
 Deploys [opsie-email](https://github.com/AB-Lindex/opsie-email), the SMTP front end of the Opsie email integration. It accepts mail for `alerts+<integration key>@<domain>`, forwards it to Opsie as an alert envelope, stores attachments in blob storage and serves them back to Opsie.
 
 ## Contents

@@ -122,6 +122,55 @@ The part that runs the internal-api module (mail route sync): all in all-in-one,
 {{- ternary "all" "app" (eq .Values.topology "all-in-one") }}
 {{- end }}
 
+{{/*
+The part that serves POST /api/events (the intake of opsie-email): all in all-in-one, else ingest.
+*/}}
+{{- define "opsie.intakePart" -}}
+{{- ternary "all" "ingest" (eq .Values.topology "all-in-one") }}
+{{- end }}
+
+{{/*
+Name of the opsie-email Deployment and its attachment API Service: <base>-email.
+*/}}
+{{- define "opsie.emailName" -}}
+{{- include "opsie.nameWith" (dict "root" . "suffix" "email") }}
+{{- end }}
+
+{{- define "opsie.emailImage" -}}
+{{- printf "%s:%s" .Values.email.image.repository (toString .Values.email.image.tag) }}
+{{- end }}
+
+{{/*
+Selector labels of the opsie-email pods; email is a component of the release next to the parts.
+*/}}
+{{- define "opsie.emailSelectorLabels" -}}
+{{- include "opsie.selectorLabels" (dict "root" . "part" "email") }}
+{{- end }}
+
+{{/*
+Labels of the opsie-email Services. No app.kubernetes.io/name label: the ServiceMonitor selects on it and would look for
+the internal port on these Services.
+*/}}
+{{- define "opsie.emailServiceLabels" -}}
+helm.sh/chart: {{ include "opsie.chart" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{/*
+Base URL of the attachment API of opsie-email, as Opsie calls it.
+*/}}
+{{- define "opsie.emailAttachmentsUrl" -}}
+{{- printf "http://%s:%d" (include "opsie.emailName" .) (.Values.email.service.attachments.port | int) }}
+{{- end }}
+
+{{/*
+True (non-empty output) when the opsie-email pods authenticate to Azure Blob Storage with workload identity.
+*/}}
+{{- define "opsie.emailWorkloadIdentity" -}}
+{{- if and (eq .Values.email.blob.provider "azure") (eq .Values.email.blob.azure.auth "workload-identity") }}true{{ end }}
+{{- end }}
+
 {{- define "opsie.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
 {{- default (include "opsie.fullname" .) .Values.serviceAccount.name }}
@@ -272,13 +321,18 @@ Public base URL of share links: the explicit value, else https://<first host>, e
 
 {{/*
 Topology spread constraints of a part as YAML; nothing when disabled. A constraint without labelSelector gets the part's own selector.
-Input: dict "root" . "part" "app".
+Input: dict "root" . "part" "app"; the email component passes its own constraints as "own" (it is not a key of parts).
 */}}
 {{- define "opsie.topologySpread" -}}
 {{- $root := .root }}
 {{- $part := .part }}
 {{- if $root.Values.topologySpread.enabled }}
-{{- $own := (index $root.Values.parts $part).topologySpreadConstraints }}
+{{- $own := list }}
+{{- if hasKey . "own" }}
+{{- $own = .own }}
+{{- else }}
+{{- $own = (index $root.Values.parts $part).topologySpreadConstraints }}
+{{- end }}
 {{- $list := ternary $own $root.Values.topologySpread.constraints (not (empty $own)) }}
 {{- $out := list }}
 {{- range $list }}
@@ -463,7 +517,7 @@ Input: dict "root" . "part" "app".
       key: routes-token-next
       optional: true
 - name: EMAIL_ATTACHMENT_API_URL
-  value: {{ $v.email.attachments.url | quote }}
+  value: {{ include "opsie.emailAttachmentsUrl" $root | quote }}
 - name: EMAIL_ATTACHMENT_API_SECRET
   valueFrom:
     secretKeyRef:

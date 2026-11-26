@@ -20,7 +20,10 @@ No ingresses or httpRoutes are configured. To reach the UI:
 /metrics is served unauthenticated on the internal port {{ .Values.internal.port }} of every part, and never on the HTTP or HTTPS port. Ingresses and httpRoutes never route it; scrape it from inside the cluster.
 {{- if .Values.email.enabled }}
 
-Email integration: opsie-email reads its routes from http://{{ include "opsie.nameWith" (dict "root" . "suffix" "internal") }}:{{ .Values.internal.port }}/api/internal/mail-routes. Its release must reference the Secret {{ .Values.email.existingSecret }} in this namespace.
+Email integration: opsie-email ({{ include "opsie.emailName" . }}) reads its routes from http://{{ include "opsie.nameWith" (dict "root" . "suffix" "internal") }}:{{ .Values.internal.port }}/api/internal/mail-routes and delivers mail to Opsie at http://{{ include "opsie.partFullname" (dict "root" . "part" (include "opsie.intakePart" .)) }}:80.
+Mail arrives at the Service {{ include "opsie.nameWith" (dict "root" . "suffix" "email-smtp") }} ({{ .Values.email.service.smtp.type }}, port {{ .Values.email.service.smtp.port }}).
+The attachment API for Opsie is {{ include "opsie.emailAttachmentsUrl" . }}.
+/metrics of opsie-email is served on the Service {{ include "opsie.nameWith" (dict "root" . "suffix" "email-metrics") }}, port {{ .Values.email.service.metrics.port }}, and must stay cluster-internal.
 {{- end }}
 {{- if .Values.valkey.enabled }}
 

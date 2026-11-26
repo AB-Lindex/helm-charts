@@ -1,0 +1,456 @@
+suite: opsie-email workload
+templates:
+  - templates/deployment-email.yaml
+  - templates/services-email.yaml
+  - templates/networkpolicy-email-pods.yaml
+values:
+  - ../ci/email-values.yaml
+tests:
+  - it: renders nothing while email is disabled
+    set:
+      email.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/deployment-email.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/services-email.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/networkpolicy-email-pods.yaml
+
+  - it: names the Deployment <base>-email and labels the pods as the email component of the release
+    template: templates/deployment-email.yaml
+    asserts:
+      - equal:
+          path: metadata.name
+          value: opsie-email
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/component: email
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/name: opsie
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: email
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: runs the opsie-email image under the shared ServiceAccount and pull secrets
+    template: templates/deployment-email.yaml
+    set:
+      serviceAccount.create: false
+      serviceAccount.name: opsie
+      image.pullSecrets:
+        - name: dockerkey
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: example.invalid/opsie-email:v0.0.0-test
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: opsie
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: dockerkey
+
+  - it: runs non-root with a read-only root file system and an emptyDir for /tmp
+    template: templates/deployment-email.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 65532
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tmp
+            mountPath: /tmp
+
+  - it: derives the route snapshot and intake URLs from the Services of the release
+    template: templates/deployment-email.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ROUTES_SOURCE
+            value: http://opsie-internal:8090/api/internal/mail-routes
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPSIE_INTAKE_URL
+            value: http://opsie:80
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ROUTES_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-shared
+                key: routes-token
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ATTACHMENTS_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-shared
+                key: attachments-secret
+
+  - it: sends mail to the ingest Service and follows the internal port in split topologies
+    template: templates/deployment-email.yaml
+    set:
+      topology: split-ingest
+      internal.port: 9100
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPSIE_INTAKE_URL
+            value: http://opsie-ingest:80
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ROUTES_SOURCE
+            value: http://opsie-internal:9100/api/internal/mail-routes
+
+  - it: accepts the email domain unless acceptDomains is set
+    template: templates/deployment-email.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SMTP_ACCEPT_DOMAINS
+            value: mail.example.com
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "SMTP_DOMAIN")]
+
+  - it: renders the SMTP tuning values and extraEnv
+    template: templates/deployment-email.yaml
+    set:
+      email.smtp.domain: smtp.example.com
+      email.smtp.acceptDomains: [a.example.com, b.example.com]
+      email.smtp.maxMessageBytes: 1048576
+      email.routes.pollInterval: 30s
+      email.forwardTimeout: 5s
+      email.extraEnv:
+        - name: EXTRA
+          value: "1"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SMTP_ACCEPT_DOMAINS
+            value: a.example.com,b.example.com
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SMTP_MAX_MESSAGE_BYTES
+            value: "1048576"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ROUTES_POLL_INTERVAL
+            value: 30s
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EXTRA
+            value: "1"
+
+  - it: workload identity labels the pod and mounts no blob secret
+    template: templates/deployment-email.yaml
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels["azure.workload.identity/use"]
+          value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BLOB_AZURE_ACCOUNT_URL
+            value: https://account.blob.core.windows.net
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "BLOB_AZURE_CONNECTION_STRING")]
+
+  - it: connection-string auth reads the blob Secret and sets no workload identity label
+    template: templates/deployment-email.yaml
+    set:
+      email.blob.azure.auth: connection-string
+      email.blob.existingSecret: opsie-email-blob
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BLOB_AZURE_CONNECTION_STRING
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-blob
+                key: azure-connection-string
+      - notExists:
+          path: spec.template.metadata.labels["azure.workload.identity/use"]
+
+  - it: s3 reads static credentials only when a blob Secret is named
+    template: templates/deployment-email.yaml
+    values:
+      - ../ci/split-all-email-values.yaml
+    set:
+      email.blob.existingSecret: opsie-email-blob
+      email.blob.s3.pathStyle: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BLOB_S3_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: opsie-email-blob
+                key: s3-access-key-id
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BLOB_S3_PATH_STYLE
+            value: "true"
+
+  - it: s3 without a blob Secret uses the default credential chain
+    template: templates/deployment-email.yaml
+    values:
+      - ../ci/split-all-email-values.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "BLOB_S3_ACCESS_KEY_ID")]
+
+  - it: filesystem mounts the claim at the blob root
+    template: templates/deployment-email.yaml
+    set:
+      email.blob.provider: filesystem
+      email.blob.filesystem.existingClaim: opsie-email-blobs
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: blobs
+            persistentVolumeClaim:
+              claimName: opsie-email-blobs
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "BLOB_AZURE_CONTAINER")]
+
+  - it: spreads the pods over the shared topology constraints with its own selector
+    template: templates/deployment-email.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/component"]
+          value: email
+
+  - it: lets email.topologySpreadConstraints replace the shared constraints and spread be switched off
+    template: templates/deployment-email.yaml
+    set:
+      email.topologySpreadConstraints:
+        - maxSkew: 2
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: topology.kubernetes.io/zone
+
+  - it: renders no spread constraints when topologySpread is disabled
+    template: templates/deployment-email.yaml
+    set:
+      topologySpread.enabled: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+
+  - it: renders three Services that keep the names of the standalone chart
+    template: templates/services-email.yaml
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: metadata.name
+          value: opsie-email-smtp
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: opsie-email
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: opsie-email-metrics
+        documentIndex: 2
+      - equal:
+          path: spec.selector["app.kubernetes.io/component"]
+          value: email
+        documentIndex: 1
+      - notExists:
+          path: metadata.labels["app.kubernetes.io/name"]
+        documentIndex: 1
+      - equal:
+          path: spec.ports[0].port
+          value: 8082
+        documentIndex: 1
+      - equal:
+          path: spec.ports[0].port
+          value: 9090
+        documentIndex: 2
+
+  - it: renders the public SMTP Service settings
+    template: templates/services-email.yaml
+    set:
+      email.service.smtp.loadBalancerIP: 203.0.113.10
+      email.service.smtp.annotations:
+        service.beta.kubernetes.io/azure-pip-name: opsie-email
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.type
+          value: LoadBalancer
+      - equal:
+          path: spec.externalTrafficPolicy
+          value: Local
+      - equal:
+          path: spec.loadBalancerIP
+          value: 203.0.113.10
+      - equal:
+          path: spec.ports[0]
+          value:
+            name: smtp
+            port: 25
+            targetPort: smtp
+            protocol: TCP
+      - equal:
+          path: metadata.annotations["service.beta.kubernetes.io/azure-pip-name"]
+          value: opsie-email
+
+  - it: leaves out externalTrafficPolicy for a ClusterIP SMTP Service
+    template: templates/services-email.yaml
+    set:
+      email.service.smtp.type: ClusterIP
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.externalTrafficPolicy
+
+  - it: opens SMTP to everyone, the attachment API to Opsie and metrics to the metrics peers
+    template: templates/networkpolicy-email-pods.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.name
+          value: opsie-email-ingress
+      - equal:
+          path: spec.ingress
+          value:
+            - ports:
+                - port: smtp
+                  protocol: TCP
+            - from:
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/component: all
+                      app.kubernetes.io/instance: RELEASE-NAME
+                      app.kubernetes.io/name: opsie
+              ports:
+                - port: attachments
+                  protocol: TCP
+            - from:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: monitoring
+              ports:
+                - port: metrics
+                  protocol: TCP
+
+  - it: keeps the metrics port closed while metricsPeers is empty
+    template: templates/networkpolicy-email-pods.yaml
+    set:
+      email.networkPolicy.metricsPeers: []
+      metrics.serviceMonitor.enabled: false
+    documentIndex: 0
+    asserts:
+      - lengthEqual:
+          path: spec.ingress
+          count: 2
+
+  - it: limits egress to DNS, Opsie, the blob endpoint and Entra ID
+    template: templates/networkpolicy-email-pods.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: metadata.name
+          value: opsie-email-egress
+      - equal:
+          path: spec.egress[1]
+          value:
+            to:
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/component: all
+                    app.kubernetes.io/instance: RELEASE-NAME
+                    app.kubernetes.io/name: opsie
+            ports:
+              - port: 8080
+                protocol: TCP
+      - equal:
+          path: spec.egress[2].ports[0].port
+          value: 8090
+      - equal:
+          path: spec.egress[3]
+          value:
+            to:
+              - ipBlock:
+                  cidr: 0.0.0.0/0
+            ports:
+              - port: 443
+                protocol: TCP
+      - lengthEqual:
+          path: spec.egress
+          count: 5
+
+  - it: targets the ingest and app parts in the split topologies and the custom internal port
+    template: templates/networkpolicy-email-pods.yaml
+    set:
+      topology: split-all
+      internal.port: 9100
+    asserts:
+      - equal:
+          path: spec.egress[1].to[0].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: ingest
+        documentIndex: 1
+      - equal:
+          path: spec.egress[2].to[0].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: app
+        documentIndex: 1
+      - equal:
+          path: spec.egress[2].ports[0].port
+          value: 9100
+        documentIndex: 1
+      - equal:
+          path: spec.ingress[1].from[0].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: app
+        documentIndex: 0
+
+  - it: needs no blob or Entra egress for the filesystem provider
+    template: templates/networkpolicy-email-pods.yaml
+    set:
+      email.blob.provider: filesystem
+      email.blob.filesystem.existingClaim: opsie-email-blobs
+    documentIndex: 1
+    asserts:
+      - lengthEqual:
+          path: spec.egress
+          count: 3
+
+  - it: renders no policy when it is switched off
+    template: templates/networkpolicy-email-pods.yaml
+    set:
+      email.networkPolicy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

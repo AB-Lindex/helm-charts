@@ -38,7 +38,7 @@ helm repo update
 helm install opsie ab-lindex/opsie -f values.yaml
 ```
 
-Use the release name `opsie`: the default resource names (`opsie`, `opsie-ingest`, `opsie-processor`, `opsie-app`, `opsie-config`, `opsie-migrate`) come from `fullnameOverride: opsie`, and the Valkey sub-chart Service follows the release name (`opsie-valkey`). Two releases in one namespace need their own `fullnameOverride` and release name.
+Use the release name `opsie`: the default resource names (`opsie`, `opsie-ingest`, `opsie-processor`, `opsie-app`, `opsie-config`, `opsie-migrate`, and with `email.enabled` `opsie-email`) come from `fullnameOverride: opsie`, and the Valkey sub-chart Service follows the release name (`opsie-valkey`). Two releases in one namespace need their own `fullnameOverride` and release name.
 
 A minimal values file:
 
@@ -69,6 +69,7 @@ The chart has no `Secret` template and no value that holds a secret. Every secre
 | `opsie-valkey` | `valkey.auth.usersExistingSecret`, `valkeySentinel.auth.usersExistingSecret`, `valkeySentinel.sentinel.existingSecret` | `default` (the key is the ACL user name). With `valkeySentinel` also `replication-user` and `sentinel` (the Sentinel password); the three passwords differ |
 | `opsie-redis` | `redis.existingSecret` | `password` (`redis.existingSecretKey`); in sentinel mode also `sentinel` (`redis.existingSecretSentinelKey`) |
 | `opsie-email-shared` | `email.existingSecret` | `routes-token` (at least 32 characters), optional `routes-token-next`, `attachments-secret` (at least 32 characters); only with `email.enabled` |
+| `opsie-email-blob` | `email.blob.existingSecret` | `azure-connection-string`, `azure-sas-token`, `s3-access-key-id` and `s3-secret-access-key`, depending on `email.blob`; only with `email.enabled`, optional |
 
 Secrets reach only the parts that use them. The database connection string and the Redis password go to every part; JWT, OIDC, themes and the admin email file go only to the parts that run the `api` module (`all` and `app`); TLS settings go to the parts that serve traffic (`all`, `ingest`, `app`).
 
@@ -234,21 +235,60 @@ Upgrading from chart 0.3.x: `metrics.port` (`METRICS_PORT`) was removed and rend
 
 ## Email integration
 
-`email.enabled: true` connects Opsie to the separate `opsie-email` service, which receives mail by SMTP and delivers envelopes to Opsie. The chart does not deploy `opsie-email`; its release is installed on its own.
+`email.enabled: true` switches on the email integration: Opsie accepts mail envelopes, and the chart deploys [opsie-email](https://github.com/AB-Lindex/opsie-email) next to it. opsie-email is the SMTP front end: it accepts mail for `alerts+<integration key>@<domain>`, forwards it to Opsie as an alert envelope, stores attachments in blob storage and serves them back to Opsie. It replaces the former `opsie-email` chart, which is deprecated; see [the migration guide](../../docs/migrating-opsie-email.md).
+
+A minimal setup on Azure with workload identity:
+
+```yaml
+email:
+  enabled: true
+  domain: mail.example.com
+  existingSecret: opsie-email-shared
+  image:
+    repository: registry.example/opsie-email
+    tag: v1.2.3
+  blob:
+    azure:
+      container: attachments
+      accountUrl: https://account.blob.core.windows.net
+  service:
+    smtp:
+      loadBalancerIP: 203.0.113.10
+      annotations:
+        service.beta.kubernetes.io/azure-pip-name: opsie-email
+        service.beta.kubernetes.io/azure-load-balancer-resource-group: rg-opsie
+```
 
 | Value | Purpose |
 | --- | --- |
 | `email.enabled` | Switches the integration on (default `false`) |
-| `email.domain` | `EMAIL_DOMAIN`: recipients are `alerts+<integration key>@<domain>` |
-| `email.existingSecret` | The Secret shared with the `opsie-email` release |
-| `email.attachments.url` | `EMAIL_ATTACHMENT_API_URL`: base URL of the attachment API of `opsie-email` |
-| `email.networkPolicy.*` | Restricts the internal port, see below |
+| `email.domain` | `EMAIL_DOMAIN`: recipients are `alerts+<integration key>@<domain>`; also the default of `email.smtp.acceptDomains` |
+| `email.existingSecret` | The Secret read by Opsie and by opsie-email, see below |
+| `email.image.*` | `repository`, `tag` (required, no `appVersion` fallback) and `pullPolicy` of opsie-email; the pull secrets are `image.pullSecrets` |
+| `email.replicaCount`, `email.resources`, `email.nodeSelector`, `email.tolerations`, `email.affinity`, `email.topologySpreadConstraints` | Scheduling of opsie-email. Without `email.topologySpreadConstraints` it uses `topologySpread.constraints` |
+| `email.logLevel`, `email.forwardTimeout`, `email.routes.*`, `email.smtp.*` | opsie-email settings; an empty value keeps the application default |
+| `email.blob.*` | Attachment storage, see below |
+| `email.service.*` | The SMTP, attachment API and metrics Services |
+| `email.networkPolicy.*` | NetworkPolicies, see below |
+| `email.podLabels`, `email.podAnnotations`, `email.extraEnv`, `email.podSecurityContext`, `email.securityContext`, `email.terminationGracePeriodSeconds` | Pod settings of opsie-email. `email.podLabels` and `email.podAnnotations` are added to the top-level `podLabels` and `podAnnotations`, which reach opsie-email too; `extraEnv`, `podSecurityContext` and `securityContext` do not. opsie-email runs as uid 65532 with a read-only root file system |
 
-The three required values are checked at render time. The parts that run the `api` module (`all` and `app`) receive `EMAIL_DOMAIN`, `EMAIL_ATTACHMENT_API_URL` and the credentials; `ingest` and `processor` receive no email variable.
+The required values are checked at render time. The parts that run the `api` module (`all` and `app`) receive `EMAIL_DOMAIN`, `EMAIL_ATTACHMENT_API_URL` and the credentials; `ingest` and `processor` receive no email variable. opsie-email runs as the component `email` of the release (`app.kubernetes.io/name: opsie`, `app.kubernetes.io/component: email`) under the ServiceAccount of the release (`serviceAccount`), so a workload identity set up for Opsie also covers the blob access of opsie-email.
+
+### Resources
+
+| Resource | Type | Port | Purpose |
+| --- | --- | --- | --- |
+| Deployment `<base>-email` | | | opsie-email; ready once the first route snapshot is loaded (probes on the HTTP port 8080) |
+| Service `<base>-email-smtp` | `LoadBalancer`, `externalTrafficPolicy: Local` | 25 to 2525 | Public mail intake. `Local` keeps the client address that route `allowedRanges` check |
+| Service `<base>-email` | `ClusterIP` | 8082 | Attachment API for Opsie |
+| Service `<base>-email-metrics` | `ClusterIP` | 9090 | Prometheus metrics, keep cluster-internal |
+| Service `<base>-internal` | `ClusterIP` | `internal.port` | Route sync for opsie-email, see below |
+
+With `fullnameOverride: opsie` these are `opsie-email`, `opsie-email-smtp`, `opsie-email-metrics` and `opsie-internal`. Opsie calls the attachment API at `http://<base>-email:<email.service.attachments.port>`; nothing needs to be configured for that. The public Service needs a static IP and an MX record for the email domain pointing at it.
 
 ### Shared Secret
 
-One existing Secret holds every credential. The chart references it by name and never renders it. Create it in the namespace of both releases:
+One existing Secret holds every credential. The chart references it by name and never renders it. Create it in the namespace of the release:
 
 ```sh
 kubectl create secret generic opsie-email-shared \
@@ -256,27 +296,49 @@ kubectl create secret generic opsie-email-shared \
   --from-literal=attachments-secret="$(openssl rand -hex 32)"
 ```
 
-| Key | Read by Opsie | Read by `opsie-email` |
+| Key | Read by Opsie | Read by opsie-email |
 | --- | --- | --- |
 | `routes-token` | accepted as route sync bearer token | sent as route sync bearer token |
 | `routes-token-next` (optional) | also accepted | not read |
 | `attachments-secret` | sent as attachment API bearer token | verified |
 
-The `opsie-email` release must reference the same Secret name and keys. Both releases must live in the same namespace, or the operator must replicate the Secret. Secrets reach the pods as environment variables, so a changed Secret needs a restart.
+Secrets reach the pods as environment variables, so a changed Secret needs a restart of both Deployments.
 
 Rotating the route sync token takes three steps and causes no outage:
 
 1. Add the new token as `routes-token-next` and restart Opsie.
-2. Set `routes-token` to the new token and `routes-token-next` to the old one, then restart both releases in any order.
+2. Set `routes-token` to the new token and `routes-token-next` to the old one, then restart Opsie and opsie-email in any order.
 3. Remove `routes-token-next` and restart Opsie.
+
+### Blob storage
+
+| Provider | Needs |
+| --- | --- |
+| `azure` | `email.blob.azure.container`; `email.blob.azure.accountUrl` for `workload-identity` (default) and `sas` |
+| `s3` | `email.blob.s3.bucket` and `email.blob.s3.region` or `email.blob.s3.endpoint` |
+| `filesystem` | `email.blob.filesystem.existingClaim`, mounted at `/data/blobs`; more than one replica needs a `ReadWriteMany` volume |
+
+`email.blob.existingSecret` holds the blob credentials and is not used with the filesystem provider or Azure workload identity:
+
+| Key | Used when |
+| --- | --- |
+| `azure-connection-string` | `email.blob.azure.auth: connection-string` |
+| `azure-sas-token` | `email.blob.azure.auth: sas` |
+| `s3-access-key-id`, `s3-secret-access-key` | `email.blob.provider: s3`; leave `email.blob.existingSecret` empty to use the default AWS credential chain |
+
+With `email.blob.azure.auth: workload-identity` the opsie-email pods get the label `azure.workload.identity/use: "true"` and no blob Secret is mounted. The ServiceAccount of the release needs the annotation `azure.workload.identity/client-id` (and optionally `azure.workload.identity/tenant-id`), set through `serviceAccount.annotations` or present on the existing account when `serviceAccount.create` is `false`. Give the federated identity the `Storage Blob Data Contributor` role on the container.
 
 ### Route sync and the internal Service
 
-With `email.enabled` the chart renders the ClusterIP Service `<base>-internal` (`opsie-internal`). It selects the part that serves route sync (`all`, or `app` in the split topologies), so `opsie-email` reads its routes from `http://opsie-internal:8090/api/internal/mail-routes` whatever the topology. Neither this Service nor the internal port is referenced by `ingresses` or `httpRoutes`.
+With `email.enabled` the chart renders the ClusterIP Service `<base>-internal` (`opsie-internal`). It selects the part that serves route sync (`all`, or `app` in the split topologies), so opsie-email reads its routes from `http://opsie-internal:8090/api/internal/mail-routes` whatever the topology. opsie-email delivers mail to the part that serves `POST /api/events` (`<base>` in `all-in-one`, `<base>-ingest` otherwise) on port 80. Both URLs are derived. Neither the internal Service nor the internal port is referenced by `ingresses` or `httpRoutes`.
 
 ### Network policy
 
-With `email.networkPolicy.enabled` (default) the chart renders an ingress NetworkPolicy for the pods behind `<base>-internal`. It keeps the HTTP (and HTTPS) port open to everyone, and allows the internal port only from the `opsie-email` pods (`email.networkPolicy.opsieEmail`, in the release namespace unless a `namespaceSelector` is given) and from `email.networkPolicy.metricsPeers`. Because the same port serves unauthenticated `/metrics`, list the Prometheus pods or namespace there:
+With `email.networkPolicy.enabled` (default) the chart renders:
+
+- for the pods behind `<base>-internal`: an ingress policy that keeps the HTTP (and HTTPS) port open to everyone and allows the internal port only from the opsie-email pods and from `email.networkPolicy.metricsPeers`. Because the same port serves unauthenticated `/metrics`, list the Prometheus pods or namespace there;
+- for the opsie-email pods, `<base>-email-ingress`: port 2525 from anywhere, the attachment API only from the Opsie pods that serve route sync, the metrics port only from `email.networkPolicy.metricsPeers` (closed while the list is empty);
+- for the opsie-email pods, `<base>-email-egress`: DNS, the Opsie pods on port 8080 (intake) and `internal.port` (route sync), the blob endpoint (`email.networkPolicy.emailEgress.blobTo` and `blobPort`, omitted for the filesystem provider) and, with workload identity, port 443 to `email.networkPolicy.emailEgress.entraTo`.
 
 ```yaml
 email:
@@ -287,7 +349,11 @@ email:
             kubernetes.io/metadata.name: monitoring
 ```
 
-Rendering fails when `metrics.serviceMonitor.enabled` and the policy are both on and `metricsPeers` is empty, because scraping would stop silently. A NetworkPolicy only works with a CNI that enforces it. `email.networkPolicy.egress.enabled` adds an Egress policy that lets those pods reach `opsie-email` on `email.networkPolicy.egress.attachmentsPort`; an Egress policy isolates all other egress of the pods (database, Valkey, DNS), so enable it only together with your own egress rules.
+Rendering fails when `metrics.serviceMonitor.enabled` and the policy are both on and `metricsPeers` is empty, because scraping would stop silently. A NetworkPolicy cannot match host names. The defaults for `blobTo` and `entraTo` allow any address on the port; narrow them to the CIDRs of your storage account and `login.microsoftonline.com`, or to an in-cluster object store. The policies only work with a CNI that enforces NetworkPolicy. `email.networkPolicy.egress.enabled` adds `<base>-internal-egress`, an Egress policy that lets the Opsie pods behind `<base>-internal` reach the attachment API; an Egress policy isolates all other egress of the pods (database, Valkey, DNS), so enable it only together with your own egress rules.
+
+### Removed values
+
+Rendering fails with a message that names the value while one of these is set: `email.attachments.url` (the URL is derived), `email.networkPolicy.opsieEmail` (the pods are selected by their labels) and `email.networkPolicy.egress.attachmentsPort` (use `email.service.attachments.port`).
 
 ## Rego helpers
 
@@ -372,7 +438,7 @@ Every value is documented in [values.yaml](values.yaml). The top-level keys are:
 | `rego` | Rego routing rules: helper folder, evaluation timeout, cache size |
 | `metrics` | ServiceMonitor |
 | `internal` | Port of the internal listener (`/metrics`, mail route sync) |
-| `email` | Email integration: domain, shared Secret, attachment API, network policy |
+| `email` | Email integration: the opsie-email Deployment, its image, blob storage, Services, shared Secret and network policies |
 | `sse` | Server-Sent Events stream: caps, kill switch and stream routing |
 | `alertEvents` | Alert change notifications on the stream: opt-out switch |
 | `podLabels`, `podAnnotations`, `extraEnv`, `extraEnvFrom`, `resources`, `podSecurityContext`, `securityContext` | Settings for every part |

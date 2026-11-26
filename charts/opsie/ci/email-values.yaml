@@ -24,8 +24,13 @@ email:
   enabled: true
   domain: mail.example.com
   existingSecret: opsie-email-shared
-  attachments:
-    url: http://opsie-email:8082
+  image:
+    repository: example.invalid/opsie-email
+    tag: v0.0.0-test
+  blob:
+    azure:
+      container: attachments
+      accountUrl: https://account.blob.core.windows.net
   networkPolicy:
     metricsPeers:
       - namespaceSelector:

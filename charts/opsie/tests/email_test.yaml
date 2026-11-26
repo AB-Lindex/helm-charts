@@ -131,7 +131,9 @@ tests:
             - from:
                 - podSelector:
                     matchLabels:
-                      app.kubernetes.io/name: opsie-email
+                      app.kubernetes.io/component: email
+                      app.kubernetes.io/instance: RELEASE-NAME
+                      app.kubernetes.io/name: opsie
                 - namespaceSelector:
                     matchLabels:
                       kubernetes.io/metadata.name: monitoring
@@ -153,23 +155,6 @@ tests:
             - port: https
               protocol: TCP
 
-  - it: selects the opsie-email namespace when a namespaceSelector is given
-    template: templates/networkpolicy-email.yaml
-    set:
-      email.networkPolicy.opsieEmail.namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: mail
-    asserts:
-      - equal:
-          path: spec.ingress[1].from[0]
-          value:
-            podSelector:
-              matchLabels:
-                app.kubernetes.io/name: opsie-email
-            namespaceSelector:
-              matchLabels:
-                kubernetes.io/metadata.name: mail
-
   - it: renders no network policy when it is switched off
     template: templates/networkpolicy-email.yaml
     set:
@@ -188,10 +173,10 @@ tests:
     template: templates/networkpolicy-email.yaml
     set:
       email.networkPolicy.egress.enabled: true
-      email.networkPolicy.egress.attachmentsPort: 9082
+      email.service.attachments.port: 9082
     documentSelector:
       path: metadata.name
-      value: opsie-email-egress
+      value: opsie-internal-egress
     asserts:
       - equal:
           path: spec.policyTypes
@@ -203,7 +188,9 @@ tests:
             - to:
                 - podSelector:
                     matchLabels:
-                      app.kubernetes.io/name: opsie-email
+                      app.kubernetes.io/component: email
+                      app.kubernetes.io/instance: RELEASE-NAME
+                      app.kubernetes.io/name: opsie
               ports:
                 - port: 9082
                   protocol: TCP
@@ -276,7 +263,7 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: EMAIL_ATTACHMENT_API_URL
-            value: https://opsie-email.mail.svc:8082
+            value: http://opsie-email:8082
 
   - it: renders no email variable on ingest and processor
     template: templates/deployment.yaml

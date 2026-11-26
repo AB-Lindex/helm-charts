@@ -1,10 +1,7 @@
 {{- if and .Values.email.enabled .Values.email.networkPolicy.enabled }}
 {{- $np := .Values.email.networkPolicy }}
 {{- $part := include "opsie.internalPart" . }}
-{{- $peer := dict "podSelector" $np.opsieEmail.podSelector }}
-{{- if $np.opsieEmail.namespaceSelector }}
-{{- $_ := set $peer "namespaceSelector" $np.opsieEmail.namespaceSelector }}
-{{- end }}
+{{- $peer := dict "podSelector" (dict "matchLabels" (include "opsie.emailSelectorLabels" . | fromYaml)) }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -38,7 +35,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "opsie.nameWith" (dict "root" . "suffix" "email-egress") }}
+  name: {{ include "opsie.nameWith" (dict "root" . "suffix" "internal-egress") }}
   labels:
     {{- include "opsie.partLabels" (dict "root" . "part" $part) | nindent 4 }}
 spec:
@@ -51,7 +48,7 @@ spec:
     - to:
         - {{ toYaml $peer | nindent 10 | trim }}
       ports:
-        - port: {{ $np.egress.attachmentsPort | int }}
+        - port: {{ .Values.email.service.attachments.port | int }}
           protocol: TCP
 {{- end }}
 {{- end }}

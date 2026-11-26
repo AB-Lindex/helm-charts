@@ -185,18 +185,60 @@ Included from templates/configmap.yaml, which always renders.
 {{- end }}
 
 {{- /* V23 */}}
-{{- if $v.email.enabled }}
-{{- if not $v.email.domain }}
+{{- $e := $v.email }}
+{{- if hasKey $e "attachments" }}
+{{- $errs = append $errs "email.attachments was removed (email.attachments.url). opsie-email is part of this release now and its attachment API URL is derived; remove email.attachments and set email.service.attachments.port to change the port." }}
+{{- end }}
+{{- if hasKey $e.networkPolicy "opsieEmail" }}
+{{- $errs = append $errs "email.networkPolicy.opsieEmail was removed (email.networkPolicy.opsieEmail). The opsie-email pods are part of this release and are selected by their labels; remove the value." }}
+{{- end }}
+{{- if hasKey $e.networkPolicy.egress "attachmentsPort" }}
+{{- $errs = append $errs "email.networkPolicy.egress.attachmentsPort was removed (email.networkPolicy.egress.attachmentsPort). The port is email.service.attachments.port; remove the value." }}
+{{- end }}
+{{- if $e.enabled }}
+{{- if not $e.domain }}
 {{- $errs = append $errs "email.enabled is true without a domain (email.domain). Set it to the domain of the recipient addresses, for example mail.example.com." }}
 {{- end }}
-{{- if not $v.email.existingSecret }}
-{{- $errs = append $errs "email.enabled is true without a Secret (email.existingSecret). Set it to the existing Secret shared with the opsie-email release, with the keys routes-token and attachments-secret." }}
+{{- if not $e.existingSecret }}
+{{- $errs = append $errs "email.enabled is true without a Secret (email.existingSecret). Set it to an existing Secret with the keys routes-token and attachments-secret." }}
 {{- end }}
-{{- if not $v.email.attachments.url }}
-{{- $errs = append $errs "email.enabled is true without an attachment API URL (email.attachments.url). Set it to the base URL of the opsie-email attachment API, for example http://opsie-email:8082." }}
+{{- if or (not $e.image.repository) (eq (toString $e.image.repository) "TBD") }}
+{{- $errs = append $errs (printf "email.image.repository is not set (email.image.repository, currently %q). Set email.image.repository, and email.image.tag, to the opsie-email image you want to run." (toString $e.image.repository)) }}
 {{- end }}
-{{- if and $v.email.networkPolicy.enabled $v.metrics.serviceMonitor.enabled (not $v.email.networkPolicy.metricsPeers) }}
+{{- if not $e.image.tag }}
+{{- $errs = append $errs "email.image.tag is not set (email.image.tag). opsie-email is versioned on its own; set the tag of the image you want to run." }}
+{{- end }}
+{{- if and $e.networkPolicy.enabled $v.metrics.serviceMonitor.enabled (not $e.networkPolicy.metricsPeers) }}
 {{- $errs = append $errs "The ServiceMonitor and the email network policy are both enabled without metrics peers (email.networkPolicy.metricsPeers). The policy would block the scrapes; list the Prometheus pods or namespace, or set email.networkPolicy.enabled=false." }}
+{{- end }}
+{{- $blob := $e.blob }}
+{{- if not (has $blob.provider (list "azure" "s3" "filesystem")) }}
+{{- $errs = append $errs (printf "email.blob.provider %q is not supported (email.blob.provider). Use one of: azure, s3, filesystem. The memory provider is for development only and is not offered by this chart." (toString $blob.provider)) }}
+{{- end }}
+{{- if eq $blob.provider "azure" }}
+{{- if not $blob.azure.container }}
+{{- $errs = append $errs "No Azure container is set (email.blob.azure.container). Set the name of the blob container." }}
+{{- end }}
+{{- if not (has $blob.azure.auth (list "workload-identity" "connection-string" "sas")) }}
+{{- $errs = append $errs (printf "email.blob.azure.auth %q is not supported (email.blob.azure.auth). Use one of: workload-identity, connection-string, sas." (toString $blob.azure.auth)) }}
+{{- end }}
+{{- if and (has $blob.azure.auth (list "workload-identity" "sas")) (not $blob.azure.accountUrl) }}
+{{- $errs = append $errs (printf "No account URL is set (email.blob.azure.accountUrl) for email.blob.azure.auth %s. Set it to https://<account>.blob.core.windows.net." $blob.azure.auth) }}
+{{- end }}
+{{- if and (has $blob.azure.auth (list "connection-string" "sas")) (not $blob.existingSecret) }}
+{{- $errs = append $errs (printf "No blob credential Secret is set (email.blob.existingSecret) for email.blob.azure.auth %s. Set it to an existing Secret with the key azure-connection-string or azure-sas-token." $blob.azure.auth) }}
+{{- end }}
+{{- end }}
+{{- if eq $blob.provider "s3" }}
+{{- if not $blob.s3.bucket }}
+{{- $errs = append $errs "No S3 bucket is set (email.blob.s3.bucket). Set the bucket name." }}
+{{- end }}
+{{- if and (not $blob.s3.region) (not $blob.s3.endpoint) }}
+{{- $errs = append $errs "No S3 region is set (email.blob.s3.region). Set the region, or email.blob.s3.endpoint for S3-compatible storage." }}
+{{- end }}
+{{- end }}
+{{- if and (eq $blob.provider "filesystem") (not $blob.filesystem.existingClaim) }}
+{{- $errs = append $errs "No volume claim is set (email.blob.filesystem.existingClaim). The root file system is read-only, so the filesystem provider needs an existing PersistentVolumeClaim." }}
 {{- end }}
 {{- end }}
 

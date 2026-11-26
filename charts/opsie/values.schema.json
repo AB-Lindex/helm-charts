@@ -160,33 +160,124 @@
         "enabled": { "type": "boolean" },
         "domain": { "type": "string" },
         "existingSecret": { "type": "string" },
-        "attachments": {
+        "image": {
           "type": "object",
           "properties": {
-            "url": { "type": "string" }
+            "repository": { "type": "string" },
+            "tag": { "type": ["string", "number"] },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          }
+        },
+        "replicaCount": { "type": "integer", "minimum": 0 },
+        "logLevel": { "type": "string", "enum": ["trace", "debug", "info", "warn", "error"] },
+        "forwardTimeout": { "type": "string" },
+        "routes": {
+          "type": "object",
+          "properties": {
+            "pollInterval": { "type": "string" },
+            "maxAge": { "type": "string" }
+          }
+        },
+        "smtp": {
+          "type": "object",
+          "properties": {
+            "domain": { "type": "string" },
+            "acceptDomains": { "type": "array", "items": { "type": "string" } },
+            "maxMessageBytes": { "type": ["string", "integer"] },
+            "rcptFailMax": { "type": ["string", "integer"] },
+            "rcptFailWindow": { "type": "string" }
+          }
+        },
+        "blob": {
+          "type": "object",
+          "properties": {
+            "provider": { "type": "string", "enum": ["azure", "s3", "filesystem"] },
+            "existingSecret": { "type": "string" },
+            "azure": {
+              "type": "object",
+              "properties": {
+                "container": { "type": "string" },
+                "auth": { "type": "string", "enum": ["workload-identity", "connection-string", "sas"] },
+                "accountUrl": { "type": "string" }
+              }
+            },
+            "s3": {
+              "type": "object",
+              "properties": {
+                "bucket": { "type": "string" },
+                "region": { "type": "string" },
+                "endpoint": { "type": "string" },
+                "pathStyle": { "type": "boolean" }
+              }
+            },
+            "filesystem": {
+              "type": "object",
+              "properties": {
+                "existingClaim": { "type": "string" }
+              }
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "smtp": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "enum": ["LoadBalancer", "NodePort", "ClusterIP"] },
+                "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                "externalTrafficPolicy": { "type": "string", "enum": ["Local", "Cluster"] },
+                "loadBalancerIP": { "type": "string" },
+                "loadBalancerSourceRanges": { "type": "array" },
+                "annotations": { "type": "object" }
+              }
+            },
+            "attachments": {
+              "type": "object",
+              "properties": {
+                "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+              }
+            },
+            "metrics": {
+              "type": "object",
+              "properties": {
+                "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+              }
+            }
           }
         },
         "networkPolicy": {
           "type": "object",
           "properties": {
             "enabled": { "type": "boolean" },
-            "opsieEmail": {
-              "type": "object",
-              "properties": {
-                "podSelector": { "type": "object" },
-                "namespaceSelector": { "type": "object" }
-              }
-            },
             "metricsPeers": { "type": "array" },
             "egress": {
               "type": "object",
               "properties": {
-                "enabled": { "type": "boolean" },
-                "attachmentsPort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+                "enabled": { "type": "boolean" }
+              }
+            },
+            "emailEgress": {
+              "type": "object",
+              "properties": {
+                "blobTo": { "type": "array" },
+                "blobPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                "entraTo": { "type": "array" }
               }
             }
           }
-        }
+        },
+        "podLabels": { "type": "object" },
+        "podAnnotations": { "type": "object" },
+        "extraEnv": { "type": "array" },
+        "podSecurityContext": { "type": "object" },
+        "securityContext": { "type": "object" },
+        "terminationGracePeriodSeconds": { "type": "integer", "minimum": 0 },
+        "resources": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "affinity": { "type": "object" },
+        "topologySpreadConstraints": { "type": "array" }
       }
     },
     "metrics": {

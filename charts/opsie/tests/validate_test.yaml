@@ -419,67 +419,156 @@ tests:
       - failedTemplate:
           errorPattern: 'internal'
 
+  - it: V23 renders the email fixture
+    values:
+      - ../ci/email-values.yaml
+    asserts:
+      - isKind:
+          of: ConfigMap
+
   - it: V23 reports email.enabled without a domain
+    values:
+      - ../ci/email-values.yaml
     set:
-      email.enabled: true
-      email.existingSecret: opsie-email-shared
-      email.attachments.url: http://opsie-email:8082
+      email.domain: ""
     asserts:
       - failedTemplate:
           errorPattern: 'email\.enabled is true without a domain \(email\.domain\)\.'
 
   - it: V23 reports email.enabled without a Secret
+    values:
+      - ../ci/email-values.yaml
     set:
-      email.enabled: true
-      email.domain: mail.example.com
-      email.attachments.url: http://opsie-email:8082
+      email.existingSecret: ""
     asserts:
       - failedTemplate:
           errorPattern: 'email\.enabled is true without a Secret \(email\.existingSecret\)\.'
 
-  - it: V23 reports email.enabled without an attachment API URL
+  - it: V23 reports the TBD email image placeholder
+    values:
+      - ../ci/email-values.yaml
     set:
-      email.enabled: true
-      email.domain: mail.example.com
-      email.existingSecret: opsie-email-shared
+      email.image.repository: TBD
     asserts:
       - failedTemplate:
-          errorPattern: 'email\.enabled is true without an attachment API URL \(email\.attachments\.url\)\.'
+          errorPattern: 'email\.image\.repository is not set \(email\.image\.repository, currently "TBD"\)\.'
+
+  - it: V23 reports a missing email image tag
+    values:
+      - ../ci/email-values.yaml
+    set:
+      email.image.tag: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'email\.image\.tag is not set \(email\.image\.tag\)\.'
+
+  - it: V23 reports the removed email.attachments.url
+    values:
+      - ../ci/email-values.yaml
+    set:
+      email.attachments.url: http://opsie-email:8082
+    asserts:
+      - failedTemplate:
+          errorPattern: 'email\.attachments was removed'
+
+  - it: V23 reports the removed email.networkPolicy.opsieEmail
+    values:
+      - ../ci/email-values.yaml
+    set:
+      email.networkPolicy.opsieEmail.namespaceSelector: {}
+    asserts:
+      - failedTemplate:
+          errorPattern: 'email\.networkPolicy\.opsieEmail was removed'
+
+  - it: V23 reports the removed email.networkPolicy.egress.attachmentsPort
+    values:
+      - ../ci/email-values.yaml
+    set:
+      email.networkPolicy.egress.attachmentsPort: 8082
+    asserts:
+      - failedTemplate:
+          errorPattern: 'email\.networkPolicy\.egress\.attachmentsPort was removed'
+
+  - it: V23 reports a missing Azure container
+    values:
+      - ../ci/email-values.yaml
+    set:
+      email.blob.azure.container: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No Azure container is set \(email\.blob\.azure\.container\)\.'
+
+  - it: V23 reports a missing Azure account URL
+    values:
+      - ../ci/email-values.yaml
+    set:
+      email.blob.azure.accountUrl: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No account URL is set \(email\.blob\.azure\.accountUrl\) for email\.blob\.azure\.auth workload-identity'
+
+  - it: V23 reports a missing blob Secret for connection-string auth
+    values:
+      - ../ci/email-values.yaml
+    set:
+      email.blob.azure.auth: connection-string
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No blob credential Secret is set \(email\.blob\.existingSecret\)'
+
+  - it: V23 reports a missing S3 bucket
+    values:
+      - ../ci/email-values.yaml
+    set:
+      email.blob.provider: s3
+      email.blob.s3.region: eu-north-1
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No S3 bucket is set \(email\.blob\.s3\.bucket\)\.'
+
+  - it: V23 reports a missing S3 region and endpoint
+    values:
+      - ../ci/email-values.yaml
+    set:
+      email.blob.provider: s3
+      email.blob.s3.bucket: b
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No S3 region is set \(email\.blob\.s3\.region\)\.'
+
+  - it: V23 reports a missing filesystem claim
+    values:
+      - ../ci/email-values.yaml
+    set:
+      email.blob.provider: filesystem
+    asserts:
+      - failedTemplate:
+          errorPattern: 'No volume claim is set \(email\.blob\.filesystem\.existingClaim\)\.'
+
+  - it: V23 rejects the memory blob provider through the schema
+    values:
+      - ../ci/email-values.yaml
+    set:
+      email.blob.provider: memory
+    asserts:
+      - failedTemplate:
+          errorPattern: 'email/blob/provider'
 
   - it: V23 reports the ServiceMonitor with the network policy and no metrics peers
+    values:
+      - ../ci/email-values.yaml
     set:
-      email.enabled: true
-      email.domain: mail.example.com
-      email.existingSecret: opsie-email-shared
-      email.attachments.url: http://opsie-email:8082
-      metrics.serviceMonitor.enabled: true
+      email.networkPolicy.metricsPeers: []
     asserts:
       - failedTemplate:
           errorPattern: 'both enabled without metrics peers \(email\.networkPolicy\.metricsPeers\)\.'
 
   - it: V23 accepts the ServiceMonitor without the network policy
+    values:
+      - ../ci/email-values.yaml
     set:
-      email.enabled: true
-      email.domain: mail.example.com
-      email.existingSecret: opsie-email-shared
-      email.attachments.url: http://opsie-email:8082
       email.networkPolicy.enabled: false
-      metrics.serviceMonitor.enabled: true
-    asserts:
-      - isKind:
-          of: ConfigMap
-
-  - it: V23 accepts the ServiceMonitor with metrics peers
-    set:
-      email.enabled: true
-      email.domain: mail.example.com
-      email.existingSecret: opsie-email-shared
-      email.attachments.url: http://opsie-email:8082
-      metrics.serviceMonitor.enabled: true
-      email.networkPolicy.metricsPeers:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: monitoring
+      email.networkPolicy.metricsPeers: []
     asserts:
       - isKind:
           of: ConfigMap

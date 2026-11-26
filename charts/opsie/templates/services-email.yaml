@@ -1,0 +1,68 @@
+{{- if .Values.email.enabled }}
+{{- $s := .Values.email.service }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" . "suffix" "email-smtp") }}
+  labels:
+    {{- include "opsie.emailServiceLabels" . | nindent 4 }}
+    app.kubernetes.io/component: email-smtp
+  {{- with $s.smtp.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $s.smtp.type }}
+  {{- if ne $s.smtp.type "ClusterIP" }}
+  externalTrafficPolicy: {{ $s.smtp.externalTrafficPolicy }}
+  {{- end }}
+  {{- if and (eq $s.smtp.type "LoadBalancer") $s.smtp.loadBalancerIP }}
+  loadBalancerIP: {{ $s.smtp.loadBalancerIP }}
+  {{- end }}
+  {{- if and (eq $s.smtp.type "LoadBalancer") $s.smtp.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml $s.smtp.loadBalancerSourceRanges | nindent 4 }}
+  {{- end }}
+  ports:
+    - name: smtp
+      port: {{ $s.smtp.port | int }}
+      targetPort: smtp
+      protocol: TCP
+  selector:
+    {{- include "opsie.emailSelectorLabels" . | nindent 4 }}
+---
+{{- /* The attachment API is cluster-internal; Opsie reaches it through EMAIL_ATTACHMENT_API_URL, built from this name. */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opsie.emailName" . }}
+  labels:
+    {{- include "opsie.emailServiceLabels" . | nindent 4 }}
+    app.kubernetes.io/component: email-attachments
+spec:
+  type: ClusterIP
+  ports:
+    - name: attachments
+      port: {{ $s.attachments.port | int }}
+      targetPort: attachments
+      protocol: TCP
+  selector:
+    {{- include "opsie.emailSelectorLabels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" . "suffix" "email-metrics") }}
+  labels:
+    {{- include "opsie.emailServiceLabels" . | nindent 4 }}
+    app.kubernetes.io/component: email-metrics
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: {{ $s.metrics.port | int }}
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    {{- include "opsie.emailSelectorLabels" . | nindent 4 }}
+{{- end }}

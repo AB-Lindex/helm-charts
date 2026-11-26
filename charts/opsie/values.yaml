@@ -103,7 +103,7 @@ podDisruptionBudget:
   minAvailable: null
 
 serviceAccount:
-  # -- Create the ServiceAccount used by every part.
+  # -- Create the ServiceAccount used by every part and by opsie-email.
   create: true
   # -- Empty means the base name (opsie).
   name: ""
@@ -340,32 +340,136 @@ metrics:
     labels: {}
 
 email:
-  # -- Enable the email integration (the opsie-email service delivers mail envelopes). Needs email.domain, email.existingSecret and email.attachments.url.
+  # -- Enable the email integration: Opsie accepts mail envelopes and the opsie-email Deployment (SMTP front end) is rendered with the release. Needs email.domain, email.existingSecret, email.image and the blob settings.
   enabled: false
-  # -- EMAIL_DOMAIN: the domain of the recipient addresses alerts+<key>@<domain>.
+  # -- EMAIL_DOMAIN: the domain of the recipient addresses alerts+<key>@<domain>. Also the default of email.smtp.acceptDomains.
   domain: ""
-  # -- One existing Secret shared with the opsie-email release, in the same namespace. Keys: routes-token (required, at least 32 characters), routes-token-next (optional, rotation) and attachments-secret (required, at least 32 characters).
+  # -- Required: one existing Secret in the namespace of the release. Keys: routes-token (required, at least 32 characters), routes-token-next (optional, rotation) and attachments-secret (required, at least 32 characters).
   existingSecret: ""
-  attachments:
-    # -- EMAIL_ATTACHMENT_API_URL: base URL of the attachment API of opsie-email, for example http://opsie-email:8082.
-    url: ""
+  image:
+    # -- Placeholder: the public image address is not known yet. Set it in your values file; rendering fails while it is TBD.
+    repository: TBD
+    # -- Required: opsie-email is versioned on its own, so there is no fallback to the chart appVersion.
+    tag: ""
+    # -- Image pull policy of the opsie-email container. The pull secrets are image.pullSecrets.
+    pullPolicy: IfNotPresent
+  # -- Replicas of opsie-email. Mail is delivered synchronously and kept in memory only while a session runs, so replicas need no coordination.
+  replicaCount: 2
+  # -- LOG_LEVEL of opsie-email: trace, debug, info, warn or error.
+  logLevel: info
+  # -- FORWARD_TIMEOUT: shared deadline of blob writes and forward per message. Empty leaves the application default (10s).
+  forwardTimeout: ""
+  routes:
+    # -- ROUTES_POLL_INTERVAL. Empty leaves the application default (60s). The route snapshot URL is derived from the internal Service.
+    pollInterval: ""
+    # -- ROUTES_MAX_AGE: how long the last snapshot is used while polling fails. Empty leaves the application default (10m).
+    maxAge: ""
+  smtp:
+    # -- SMTP_DOMAIN: host name in the greeting. Empty leaves the application default.
+    domain: ""
+    # -- SMTP_ACCEPT_DOMAINS: recipient domains accepted before the route table decides. Empty means [email.domain].
+    acceptDomains: []
+    # -- SMTP_MAX_MESSAGE_BYTES: ceiling for every route. Worst case memory is the connection limit times this value. Empty leaves the application default.
+    maxMessageBytes: ""
+    # -- SMTP_RCPT_FAIL_MAX. Empty leaves the application default.
+    rcptFailMax: ""
+    # -- SMTP_RCPT_FAIL_WINDOW. Empty leaves the application default.
+    rcptFailWindow: ""
+  blob:
+    # -- Required: azure | s3 | filesystem. The memory provider is for development only and is not offered by this chart.
+    provider: azure
+    # -- Existing Secret with the blob credentials. Keys: azure-connection-string (auth connection-string), azure-sas-token (auth sas), s3-access-key-id and s3-secret-access-key (optional: empty uses the default AWS credential chain). Not used with auth workload-identity or the filesystem provider.
+    existingSecret: ""
+    azure:
+      # -- Required: container name (BLOB_AZURE_CONTAINER).
+      container: ""
+      # -- workload-identity | connection-string | sas. workload-identity needs the annotation azure.workload.identity/client-id on the ServiceAccount of the release (serviceAccount.annotations, or the existing account when serviceAccount.create is false).
+      auth: workload-identity
+      # -- Account URL, required for workload-identity and sas, for example https://account.blob.core.windows.net.
+      accountUrl: ""
+    s3:
+      # -- Required: bucket name (BLOB_S3_BUCKET).
+      bucket: ""
+      # -- Region; required without an endpoint.
+      region: ""
+      # -- Endpoint URL for S3-compatible storage.
+      endpoint: ""
+      # -- Path-style addressing (BLOB_S3_PATH_STYLE).
+      pathStyle: false
+    filesystem:
+      # -- Required: existing PersistentVolumeClaim, mounted at /data/blobs. More than one replica needs a ReadWriteMany volume.
+      existingClaim: ""
+  service:
+    smtp:
+      # -- Public Service <base>-email-smtp that receives mail. LoadBalancer | NodePort | ClusterIP.
+      type: LoadBalancer
+      # -- Service port; the container listens on 2525.
+      port: 25
+      # -- Local keeps the client address, which route allowedRanges depend on. Ignored for ClusterIP.
+      externalTrafficPolicy: Local
+      # -- Static public IP of the load balancer.
+      loadBalancerIP: ""
+      # -- Source ranges allowed to reach the load balancer. Empty allows everyone.
+      loadBalancerSourceRanges: []
+      # -- Annotations, for example on AKS service.beta.kubernetes.io/azure-pip-name and service.beta.kubernetes.io/azure-load-balancer-resource-group.
+      annotations: {}
+    attachments:
+      # -- Port of the cluster-internal attachment API Service <base>-email (ClusterIP). Opsie reaches it at http://<base>-email:<port>.
+      port: 8082
+    metrics:
+      # -- Port of the cluster-internal metrics Service <base>-email-metrics (ClusterIP).
+      port: 9090
   networkPolicy:
-    # -- Render a NetworkPolicy that limits the internal port to opsie-email and metricsPeers. Needs a CNI that enforces NetworkPolicy; other ports stay open.
+    # -- Render the NetworkPolicies of the integration: the internal port of Opsie is limited to opsie-email and metricsPeers, and opsie-email gets an ingress and an egress policy. Needs a CNI that enforces NetworkPolicy.
     enabled: true
-    opsieEmail:
-      # -- Pods of opsie-email that may call the route sync.
-      podSelector:
-        matchLabels:
-          app.kubernetes.io/name: opsie-email
-      # -- Namespace of those pods. An empty selector means the namespace of this release.
-      namespaceSelector: {}
-    # -- Peers (NetworkPolicy "from" entries, for example the Prometheus pods or namespace) that may scrape /metrics. Required when the ServiceMonitor and the policy are both enabled.
+    # -- Peers (NetworkPolicy "from" entries, for example the Prometheus pods or namespace) that may scrape /metrics of Opsie (internal port) and of opsie-email. Required when the ServiceMonitor and the policy are both enabled.
     metricsPeers: []
     egress:
       # -- Also render an Egress policy that lets Opsie reach the opsie-email attachment API. An Egress policy isolates all other egress of the pods; combine it with your own egress rules.
       enabled: false
-      # -- Port of the attachment API of opsie-email.
-      attachmentsPort: 8082
+    emailEgress:
+      # -- Peers of the blob endpoint, for the egress policy of the opsie-email pods. A NetworkPolicy cannot match host names; narrow the default to the CIDRs of your storage account or the in-cluster object store.
+      blobTo:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      # -- Port of the blob endpoint.
+      blobPort: 443
+      # -- Peers of login.microsoftonline.com (workload identity only). Same limit as blobTo.
+      entraTo:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+  # -- Labels on the opsie-email pods, in addition to podLabels.
+  podLabels: {}
+  # -- Annotations on the opsie-email pods, in addition to podAnnotations.
+  podAnnotations: {}
+  # -- Extra environment variables of the opsie-email container.
+  extraEnv: []
+  # -- Pod security context of opsie-email (its image runs as uid 65532).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Container security context of opsie-email. The image holds a single static binary, so the root file system is read-only.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+  # -- Seconds to finish in-flight sessions; opsie-email drains for 30 s.
+  terminationGracePeriodSeconds: 45
+  # -- Resources of opsie-email.
+  resources: {}
+  # -- Node selector of opsie-email.
+  nodeSelector: {}
+  # -- Tolerations of opsie-email.
+  tolerations: []
+  # -- Affinity of opsie-email.
+  affinity: {}
+  # -- Topology spread constraints of opsie-email; empty uses topologySpread.constraints (when topologySpread.enabled).
+  topologySpreadConstraints: []
 
 sse:
   # -- Serve the Server-Sent Events stream GET /api/stream, with a dedicated Ingress or HTTPRoute per routing entry. false sets SSE_DISABLED=true and renders no stream routing.
@@ -389,9 +493,9 @@ alertEvents:
   # -- Alert change notifications on the SSE stream (alerts appear in open tabs within seconds). false sets ALERT_EVENTS_DISABLED=true on every part; the 30 s poll then covers everything. Needs Valkey, which the chart already requires.
   enabled: true
 
-# -- Labels on the pods of every part.
+# -- Labels on the pods of every part and of opsie-email.
 podLabels: {}
-# -- Annotations on the pods of every part.
+# -- Annotations on the pods of every part and of opsie-email.
 podAnnotations: {}
 # -- Extra environment variables on every part.
 extraEnv: []
@@ -489,7 +593,7 @@ extraObjects: []
   # - apiVersion: v1
   #   kind: Secret
   #   metadata:
-  #     name: opsie-email-shared           # email.existingSecret, also referenced by the opsie-email release
+  #     name: opsie-email-shared           # email.existingSecret, read by Opsie and by the opsie-email Deployment
   #   type: Opaque
   #   stringData:
   #     routes-token: CHANGE-ME-at-least-32-characters

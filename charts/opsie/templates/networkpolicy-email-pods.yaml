@@ -1,0 +1,79 @@
+{{- if and .Values.email.enabled .Values.email.networkPolicy.enabled }}
+{{- $np := .Values.email.networkPolicy }}
+{{- $intakePeer := dict "podSelector" (dict "matchLabels" (include "opsie.selectorLabels" (dict "root" . "part" (include "opsie.intakePart" .)) | fromYaml)) }}
+{{- $internalPeer := dict "podSelector" (dict "matchLabels" (include "opsie.selectorLabels" (dict "root" . "part" (include "opsie.internalPart" .)) | fromYaml)) }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" . "suffix" "email-ingress") }}
+  labels:
+    {{- include "opsie.partLabels" (dict "root" . "part" "email") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opsie.emailSelectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    {{- /* No "from": mail arrives from any host on the internet. */}}
+    - ports:
+        - port: smtp
+          protocol: TCP
+    - from:
+        - {{ toYaml $internalPeer | nindent 10 | trim }}
+      ports:
+        - port: attachments
+          protocol: TCP
+    {{- with $np.metricsPeers }}
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - port: metrics
+          protocol: TCP
+    {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opsie.nameWith" (dict "root" . "suffix" "email-egress") }}
+  labels:
+    {{- include "opsie.partLabels" (dict "root" . "part" "email") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opsie.emailSelectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - {{ toYaml $intakePeer | nindent 10 | trim }}
+      ports:
+        - port: 8080
+          protocol: TCP
+    - to:
+        - {{ toYaml $internalPeer | nindent 10 | trim }}
+      ports:
+        - port: {{ .Values.internal.port | int }}
+          protocol: TCP
+    {{- if ne .Values.email.blob.provider "filesystem" }}
+    - to:
+        {{- toYaml $np.emailEgress.blobTo | nindent 8 }}
+      ports:
+        - port: {{ $np.emailEgress.blobPort | int }}
+          protocol: TCP
+    {{- end }}
+    {{- if include "opsie.emailWorkloadIdentity" . }}
+    - to:
+        {{- toYaml $np.emailEgress.entraTo | nindent 8 }}
+      ports:
+        - port: 443
+          protocol: TCP
+    {{- end }}
+{{- end }}

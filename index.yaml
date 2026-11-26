@@ -15,6 +15,33 @@ entries:
   opsie:
   - apiVersion: v2
     appVersion: v0.37
+    created: "2026-11-26T08:35:11.337474396Z"
+    dependencies:
+    - condition: valkey.enabled
+      name: valkey
+      repository: https://valkey.io/valkey-helm/
+      version: 1.0.0-rc.1
+    - alias: valkeySentinel
+      condition: valkeySentinel.enabled
+      name: valkey
+      repository: https://valkey.io/valkey-helm/
+      version: 1.0.0-rc.1
+    description: A Helm chart for Opsie, the on-call and alert management platform
+      (external MSSQL or PostgreSQL, Valkey required), with the optional opsie-email
+      SMTP front end
+    digest: 05238437c3b36e74e67a0b15bbc237614c7bbd2cc812ac6b38f936cf36087501
+    home: https://github.com/AB-Lindex/helm-charts
+    kubeVersion: '>=1.32.0-0'
+    name: opsie
+    sources:
+    - https://github.com/AB-Lindex/helm-charts
+    - https://github.com/AB-Lindex/opsie
+    type: application
+    urls:
+    - https://github.com/AB-Lindex/helm-charts/releases/download/opsie-0.8.1/opsie-0.8.1.tgz
+    version: 0.8.1
+  - apiVersion: v2
+    appVersion: v0.37
     created: "2026-11-26T07:48:37.273962708Z"
     dependencies:
     - condition: valkey.enabled
@@ -316,4 +343,4 @@ entries:
     urls:
     - https://github.com/AB-Lindex/helm-charts/releases/download/opsie-email-0.1.0/opsie-email-0.1.0.tgz
     version: 0.1.0
-generated: "2026-11-26T07:48:37.533076391Z"
+generated: "2026-11-26T08:35:11.33755779Z"
